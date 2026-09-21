@@ -1,0 +1,44 @@
+Metadata-Version: 2.4
+Name: pyact-cli
+Version: 0.2.0
+Summary: A CLI tool to compile .pamd files to Markdown.
+Home-page: https://github.com/yourusername/pyact
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-python
+Dynamic: summary
+
+# PyAct CLI
+
+PyAct CLI is a tool designed to process `.pamd` files, which bundle Python logic and Markdown content together, similar to a Jupyter Notebook. This compiler resolves variables and dependencies to generate standard Markdown output.
+
+## Installation
+
+You can install it directly from source (or after uploading to PyPI):
+
+```bash
+pip install pyact-cli
+```
+
+## Usage
+
+Compile a `.pamd` file and output to the terminal:
+```bash
+pyact path/to/your_file.pamd
+```
+
+Compile and save the output to a new Markdown file:
+```bash
+pyact path/to/your_file.pamd -o output.md
+```

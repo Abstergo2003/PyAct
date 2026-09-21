@@ -1,109 +1,32 @@
-# 📝 PyAct Builder
+<div align="center">
+  <h1>🚀 PyAct</h1>
+  <p><b>Dynamic Markdown Generation powered by Python</b></p>
+</div>
 
-**PyAct Builder** is a lightweight yet powerful Markdown template engine that allows you to dynamically generate documents using Python scripts.
+Welcome to **PyAct**! Have you ever wanted to write a Markdown document but needed to do complex math, generate tables on the fly, or automatically convert Python functions to LaTeX? 
 
-Thanks to recursive processing, you can build complex documents from small, independent blocks ("nodes"), inject data (dates, API results, calculations), and automate the creation of reports or static pages.
+PyAct solves this by introducing `.pamd` files — a powerful format that merges the simplicity of Markdown with the computational power of Python.
 
-## 🚀 Key Features
+## 🌟 Why PyAct?
+- **Code & Content Together**: Write your Python logic and your Markdown content side-by-side. 
+- **Auto-LaTeX Generation**: Turn standard Python lambda functions directly into LaTeX math equations!
+- **Component Templates**: Keep your documents clean by splitting them into smaller `<tmp>` templates.
+- **Jupyter-like Experience**: A beautifully integrated VS Code extension makes writing `.pamd` feel like writing a Jupyter Notebook.
 
-  * **Python Integration:** Each text fragment can have a corresponding `.py` script that supplies data.
-  * **Recursion:** Nest templates within templates without limits (e.g., `Main -> Section -> Component`).
-  * **Simple Syntax:** Use `{[component]}` to insert blocks and `{{variable}}` to insert data.
-  * **CLI Tool:** A built-in command-line tool for quick setup and building.
+## 📦 The Ecosystem
 
-## 📦 Installation
+PyAct is built for users, with two easy-to-use tools:
 
-Install the package directly from PyPI:
+### 1. The PyAct Compiler (CLI)
+Available on PyPI, the CLI is the brain of PyAct. It compiles your `.pamd` files into standard, clean `.md` files that you can publish anywhere.
+👉 [Check out the CLI](./pyact_cli/)
 
-```bash
-pip install pyact
-```
+### 2. Install the VS Code Extension
+For the ultimate Jupyter-like writing experience, install the official PAMD extension directly from the VS Code Marketplace! 
+1. Open VS Code
+2. Search for **PAMD** in the Extensions tab
+3. Click Install and enjoy side-by-side editing, syntax highlighting, and a magical "Run" button that instantly compiles and opens a live Markdown preview of your document.
+👉 [Check out the Extension](./pamd-file-support/)
 
-
-## ⚡ Quick Start
-
-1.  **Initialize a new project:**
-    The tool automatically generates the directory structure and example files.
-
-    ```bash
-    pyact make
-    ```
-
-2.  **Build the document:**
-    Processes `main.md` and saves the result in the `output/` folder.
-
-    ```bash
-    pyact run
-    ```
-
-## 📂 Project Structure
-
-After running the `make` command, your project will look like this:
-
-```text
-.
-├── main.md           # Main input file
-├── output/           # Destination for the final file (output.md)
-└── nodes/            # Folder containing your components
-    ├── header.md     # Component template
-    └── header.py     # Component logic (optional)
-```
-
-## 📖 How It Works
-
-The system relies on two types of tags:
-
-### 1\. Component Tags: `{[name]}`
-
-These insert content from the `nodes/name.md` file. If a corresponding `nodes/name.py` file exists, it will be executed first to provide data to the template.
-
-**Example in `main.md`:**
-
-```markdown
-# Daily Report
-Below are the sales figures.
-
-{[sales_table]}
-```
-
-### 2\. Variable Tags: `{{key}}`
-
-Inside `.md` files located in the `nodes/` folder, you can use variables that will be replaced by the Python script.
-
-**Example in `nodes/sales_table.py`:**
-
-```python
-def sales_table():
-    # Return a dictionary (dict) with data
-    return {
-        "date": "2023-10-27",
-        "total": 1500
-    }
-```
-
-**Example in `nodes/sales_table.md`:**
-
-```markdown
-### Sales for {{date}}
-Total revenue was: **{{total}} USD**.
-```
-
-### Final Result (`output.md`):
-
-```markdown
-# Daily Report
-Below are the sales figures.
-
-### Sales for 2023-10-27
-Total revenue was: **1500 USD**.
-```
-
-## 🛠️ Advanced
-
-### Returning JSON
-
-If your Python script is complex, instead of a dictionary (`dict`), it can return a **JSON formatted string**. The engine will parse it automatically.
-
-### Error Handling
-
-If you forget to create an `.md` file or if a `.py` script returns an error, the `builder` will notify you in the console. In the final output file, it will simply skip the faulty fragment instead of breaking the entire document.
+---
+Get started today by checking out the individual folders above to supercharge your Markdown workflow!
