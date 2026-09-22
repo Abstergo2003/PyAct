@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="pyact-cli",
-    version="0.3.0",
+    version="0.4.0",
     author="Abstergo2003",
     author_email="",
     description="A CLI tool to compile .pamd files to Markdown.",

@@ -163,6 +163,52 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+
+	// Register Export to DOCX command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('pamd.generateDocx', async (contextUri?: vscode.Uri) => {
+			let uri = contextUri;
+			if (!uri) {
+				if (vscode.window.activeNotebookEditor && vscode.window.activeNotebookEditor.notebook.notebookType === 'pamd-notebook') {
+					uri = vscode.window.activeNotebookEditor.notebook.uri;
+				} else {
+					vscode.window.showErrorMessage('No active PAMD file found.');
+					return;
+				}
+			}
+
+			const pamdPath = uri.fsPath;
+			const outMdPath = pamdPath.replace(/\.pamd$/, '.md');
+			const outDocxPath = pamdPath.replace(/\.pamd$/, '.docx');
+
+			// Save the document if it's dirty
+			if (vscode.window.activeNotebookEditor && vscode.window.activeNotebookEditor.notebook.uri.toString() === uri.toString()) {
+				if (vscode.window.activeNotebookEditor.notebook.isDirty) {
+					await vscode.window.activeNotebookEditor.notebook.save();
+				}
+			}
+
+			vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Compiling PAMD to DOCX",
+				cancellable: false
+			}, async (progress) => {
+				return new Promise<void>((resolve, reject) => {
+					const { exec } = require('child_process');
+					// We execute python via pyact.cli so it generates both MD and DOCX
+					exec(`python -m pyact.cli "${pamdPath}" -o "${outMdPath}" --docx "${outDocxPath}"`, (error: any, stdout: string, stderr: string) => {
+						if (error) {
+							vscode.window.showErrorMessage(`Error generating DOCX: ${stderr || error.message}`);
+							reject(error);
+						} else {
+							vscode.window.showInformationMessage(`Successfully generated ${outDocxPath}`);
+							resolve();
+						}
+					});
+				});
+			});
+		})
+	);
 }
 
 export function deactivate() {}

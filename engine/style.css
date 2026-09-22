@@ -1,0 +1,106 @@
+/*
+  PyAct to python-docx CSS Mapping Reference
+  
+  Note: python-docx styling is divided into two levels:
+  1. Paragraph Formatting (alignment, spacing, indentation)
+  2. Run / Font Formatting (size, color, family, bold, italic)
+*/
+
+body {
+    /* Global Default Font Settings */
+    font-family: "Calibri"; /* Any valid system font name */
+    font-size: 11pt;        /* e.g., 10pt, 11pt, 1.5in */
+    color: #000000;         /* HEX color e.g., #RRGGBB */
+    
+    /* Global Paragraph Spacing */
+    line-height: 1.15;      /* e.g., 1.0, 1.15, 1.5, 2.0 */
+    margin-top: 0pt;        /* e.g., 0pt, 12pt, 0.5in */
+    margin-bottom: 10pt;    
+}
+
+h1, h2, h3, h4, h5, h6 {
+    /* Font Styling */
+    font-family: "Arial";
+    font-size: 16pt;
+    color: #2F5496;
+    
+    /* Predefined Boolean Properties */
+    font-weight: bold;      /* bold | normal */
+    font-style: italic;     /* italic | normal */
+    text-decoration: underline; /* underline | line-through | none */
+
+    /* Paragraph Formatting */
+    text-align: left;       /* left | center | right | justify | distribute */
+    margin-top: 12pt;       
+    margin-bottom: 6pt;     
+    page-break-before: auto; /* always | auto */
+}
+
+equation {
+    /* 
+      python-docx (via math2docx) renders equations as OMML structures.
+    */
+    text-align: center;     /* left | center | right | justify */
+    margin-top: 10pt;
+    margin-bottom: 10pt;
+}
+
+image {
+    /* 
+      Image dimensions when calling doc.add_picture() 
+    */
+    width: 6in;             /* e.g., 6in, 10cm, 200pt */
+    height: 4in;            
+    text-align: center;     /* left | center | right */
+}
+
+table {
+    /* 
+      python-docx table styling is best handled by built-in Word Table Styles.
+    */
+    border-style: solid;    /* solid | dashed | dotted | double | none */
+    text-align: center;     /* left | center | right */
+    width: 100%;            /* auto | 100% | 5in */
+}
+
+table_header {
+    /* 
+      Shading and cell formatting (requires raw XML <w:shd> for background)
+    */
+    background-color: #D3D3D3; /* HEX color e.g., #RRGGBB */
+    color: #000000;
+    font-weight: bold;         /* bold | normal */
+    text-align: center;        /* left | center | right | justify */
+}
+
+hyperlink {
+    /* Font attributes applied to the hyperlink text run */
+    color: #0563C1;         
+    text-decoration: underline; /* underline | none */
+}
+
+list {
+    /* 
+       python-docx uses Word styles like 'List Bullet' or 'List Number'.
+    */
+    list-style-type: disc;  /* disc | decimal | none (handled via Word styles) */
+    margin-left: 0.5in;     /* e.g., 0.5in, 1cm, 12pt */
+    margin-bottom: 4pt;
+    font-family: "Calibri";
+    font-size: 11pt;
+}
+
+text {
+    /* Standard inline text / paragraphs (The 'Normal' style) */
+    font-family: "Calibri";
+    font-size: 11pt;
+    color: #000000;
+    text-align: left;       /* left | center | right | justify | distribute */
+    line-height: 1.15;
+    margin-top: 0pt;
+    margin-bottom: 12pt;
+    
+    /* Text specific effects (examples) */
+    /* text-transform: uppercase; */
+    /* background-color: yellow; */
+}

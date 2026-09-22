@@ -3,7 +3,7 @@
   "displayName": "PAMD file support",
   "description": "",
   "icon": "file_icon.webp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.138.0"
   },
@@ -36,7 +36,23 @@
           }
         ]
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "pamd.generateDocx",
+        "title": "Export to Word (.docx)",
+        "icon": "$(export)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "pamd.generateDocx",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
