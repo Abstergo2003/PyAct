@@ -7,7 +7,7 @@ setup(
     name="pyact-cli",
     version="0.3.0",
     author="Abstergo2003",
-    author_email="s",
+    author_email="",
     description="A CLI tool to compile .pamd files to Markdown.",
     long_description=long_description,
     long_description_content_type="text/markdown",

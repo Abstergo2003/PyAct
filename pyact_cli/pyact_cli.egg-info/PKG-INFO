@@ -1,17 +1,16 @@
 Metadata-Version: 2.4
 Name: pyact-cli
-Version: 0.2.0
+Version: 0.3.0
 Summary: A CLI tool to compile .pamd files to Markdown.
-Home-page: https://github.com/yourusername/pyact
-Author: Your Name
-Author-email: your.email@example.com
+Home-page: https://github.com/Abstergo2003/PyAct
+Author: Abstergo2003
+Author-email: 
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 Dynamic: author
-Dynamic: author-email
 Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
@@ -19,26 +18,57 @@ Dynamic: home-page
 Dynamic: requires-python
 Dynamic: summary
 
-# PyAct CLI
+<div align="center">
+  <h1>⚡ PyAct CLI</h1>
+  <p><b>The engine behind dynamic Markdown.</b></p>
+</div>
 
-PyAct CLI is a tool designed to process `.pamd` files, which bundle Python logic and Markdown content together, similar to a Jupyter Notebook. This compiler resolves variables and dependencies to generate standard Markdown output.
+The **PyAct CLI** allows you to compile `.pamd` files into standard Markdown (`.md`). It evaluates your Python logic, injects your variables, and builds complex markdown elements effortlessly.
 
-## Installation
+## 🚀 Installation
 
-You can install it directly from source (or after uploading to PyPI):
-
+Install it directly from PyPI:
 ```bash
 pip install pyact-cli
 ```
 
-## Usage
+## 📖 How it works
 
-Compile a `.pamd` file and output to the terminal:
-```bash
-pyact path/to/your_file.pamd
+A `.pamd` file is split into a **Python cell** and a **Markdown cell**. 
+
+### 1. Write your Python logic
+Define a `context()` function that returns the variables you want to inject. You can even use the built-in `pamd_helpers` to do heavy lifting!
+
+```python
+import pamd_helpers
+
+def context():
+    # Automatically converts the lambda to LaTeX!
+    equation = pamd_helpers.equation(lambda x: x**2, [5])
+    
+    return {
+        "title": "My PyAct Document",
+        "math": equation
+    }
 ```
 
-Compile and save the output to a new Markdown file:
+### 2. Write your Markdown
+Use `<ctx>` tags to inject your Python variables anywhere in your text.
+
+```markdown
+# <ctx>title</ctx>
+
+Here is my dynamically generated equation:
+<ctx>math</ctx>
+
+You can also include other pamd files as templates!
+<tmp>path/to/another_file</tmp>
+```
+
+### 3. Compile!
+Run the compiler from your terminal to generate your final Markdown document:
 ```bash
 pyact path/to/your_file.pamd -o output.md
 ```
+
+That's it! You now have a standard Markdown file ready to be shared, published, or converted to PDF.

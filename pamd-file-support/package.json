@@ -2,16 +2,30 @@
   "name": "pamd-file-support",
   "displayName": "PAMD file support",
   "description": "",
-  "version": "0.0.1",
+  "icon": "file_icon.webp",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.138.0"
   },
+  "publisher": "Abstergo",
   "categories": [
     "Other"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "pamd",
+        "extensions": [
+          ".pamd"
+        ],
+        "icon": {
+          "light": "./file_icon.webp",
+          "dark": "./file_icon.webp"
+        }
+      }
+    ],
     "notebooks": [
       {
         "type": "pamd-notebook",

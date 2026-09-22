@@ -21,7 +21,33 @@ class PamdNotebookSerializer implements vscode.NotebookSerializer {
 		try {
 			raw = <RawNotebook>JSON.parse(contents);
 		} catch {
-			raw = { cells: [] };
+			if (!contents.trim()) {
+				raw = {
+					cells: [
+						{
+							cell_type: 'markdown',
+							source: [
+								"# Document Title\n",
+								"\n",
+								"Write your markdown here...\n"
+							]
+						},
+						{
+							cell_type: 'code',
+							source: [
+								"import pamd_helpers\n",
+								"\n",
+								"def context():\n",
+								"    return {\n",
+								"        \n",
+								"    }"
+							]
+						}
+					]
+				};
+			} else {
+				raw = { cells: [] };
+			}
 		}
 
 		const cells = raw.cells.map(
