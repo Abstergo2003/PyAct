@@ -1,16 +1,47 @@
 import * as vscode from 'vscode';
 import { TextDecoder, TextEncoder } from 'util';
 
+/**
+ * Interface defining the raw JSON structure of a .pamd file.
+ * .pamd files share the exact same underlying structure as Jupyter Notebooks (.ipynb),
+ * meaning they consist of an array of cell objects.
+ */
 interface RawNotebook {
 	cells: RawNotebookCell[];
 }
 
+/**
+ * Interface defining an individual cell inside a .pamd file.
+ */
 interface RawNotebookCell {
+	/** The type of cell. PyAct only supports 'code' (Python) and 'markdown' cells. */
 	cell_type: 'code' | 'markdown';
+	/** The text content of the cell. Can be a single string or an array of strings (lines). */
 	source: string[] | string;
 }
 
+/**
+ * Notebook Serializer for handling custom .pamd files.
+ * 
+ * Why it is needed:
+ * VS Code Notebooks natively only understand JSON or text if told how to parse it. 
+ * This class acts as the translation layer between the raw `.pamd` JSON file on disk 
+ * and the visual Notebook UI inside the VS Code editor.
+ */
 class PamdNotebookSerializer implements vscode.NotebookSerializer {
+	
+	/**
+	 * Deserializes raw file bytes into VS Code Notebook data.
+	 * 
+	 * Why it is needed:
+	 * Called automatically when a user opens a `.pamd` file. It reads the raw JSON 
+	 * and builds the interactive Markdown and Python cells. If the file is completely 
+	 * empty, it bootstraps it with a default Markdown and Python `context()` cell.
+	 * 
+	 * @param content The raw binary data of the file from disk.
+	 * @param _token Cancellation token.
+	 * @returns A parsed `vscode.NotebookData` object ready to render.
+	 */
 	async deserializeNotebook(
 		content: Uint8Array,
 		_token: vscode.CancellationToken
@@ -22,6 +53,7 @@ class PamdNotebookSerializer implements vscode.NotebookSerializer {
 			raw = <RawNotebook>JSON.parse(contents);
 		} catch {
 			if (!contents.trim()) {
+				// Bootstrap a new, empty .pamd file with the required boilerplate structure
 				raw = {
 					cells: [
 						{
@@ -64,6 +96,18 @@ class PamdNotebookSerializer implements vscode.NotebookSerializer {
 		return new vscode.NotebookData(cells);
 	}
 
+	/**
+	 * Serializes VS Code Notebook data back into raw file bytes.
+	 * 
+	 * Why it is needed:
+	 * Called automatically when a user saves a `.pamd` file (Ctrl+S). It converts 
+	 * the modified interactive cells back into standard Jupyter JSON format so the 
+	 * Python PyAct compiler can read it safely.
+	 * 
+	 * @param data The interactive Notebook data from the VS Code editor.
+	 * @param _token Cancellation token.
+	 * @returns The raw binary string encoded into a Uint8Array.
+	 */
 	async serializeNotebook(
 		data: vscode.NotebookData,
 		_token: vscode.CancellationToken
@@ -82,12 +126,23 @@ class PamdNotebookSerializer implements vscode.NotebookSerializer {
 	}
 }
 
+/**
+ * Main activation function for the VS Code Extension.
+ * 
+ * Why it is needed:
+ * This is the entry point that VS Code calls when the extension is launched. 
+ * It registers the `.pamd` Notebook serializer, the execution controller (Run button), 
+ * UI event listeners, and the DOCX export command.
+ * 
+ * @param context The extension context provided by VS Code.
+ */
 export function activate(context: vscode.ExtensionContext) {
+	// Register the Serializer to handle .pamd file opening/saving
 	context.subscriptions.push(
 		vscode.workspace.registerNotebookSerializer('pamd-notebook', new PamdNotebookSerializer())
 	);
 
-	// Register a controller to execute the pyact command when "Run" is pressed
+	// Register the Execution Controller (The "Run" button in the Notebook UI)
 	const controller = vscode.notebooks.createNotebookController(
 		'pamd-dummy-controller',
 		'pamd-notebook',
@@ -97,18 +152,26 @@ export function activate(context: vscode.ExtensionContext) {
 	controller.supportsExecutionOrder = false;
 	controller.description = 'Compile PAMD to Markdown';
 	
+	/**
+	 * The handler executed when the user presses the "Run" button.
+	 * 
+	 * Why it is needed:
+	 * Instead of executing Python code natively inside VS Code like a true Jupyter backend, 
+	 * this handler saves the file to disk and shells out to `python -m pyact.cli`. 
+	 * It then displays the output in the cell and automatically opens the compiled Markdown preview.
+	 */
 	controller.executeHandler = async (cells, notebook, ctrl) => {
 		for (const cell of cells) {
 			const execution = ctrl.createNotebookCellExecution(cell);
 			execution.start(Date.now());
 			
 			try {
+				// Auto-save before running to ensure CLI has latest data
 				if (notebook.isDirty) {
 					await notebook.save();
 				}
 
 				const pamdPath = notebook.uri.fsPath;
-				// Replace .pamd with .md for the output file
 				const outPath = pamdPath.replace(/\.pamd$/, '.md');
 
 				const { exec } = require('child_process');
@@ -148,6 +211,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const openedNotebooks = new Set<string>();
 
+	/**
+	 * Window Editor Event Listener.
+	 * 
+	 * Why it is needed:
+	 * Automatically focuses the Markdown cell when a new `.pamd` file is opened so 
+	 * the user can start typing their document immediately without needing to click.
+	 */
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveNotebookEditor(async editor => {
 			if (editor && editor.notebook.notebookType === 'pamd-notebook') {
@@ -164,7 +234,14 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Register Export to DOCX command
+	/**
+	 * Register the DOCX Export Command.
+	 * 
+	 * Why it is needed:
+	 * Binds to the `pamd.generateDocx` button in the editor title bar. 
+	 * It triggers the PyAct CLI in the background with the `--docx` switch 
+	 * to generate a finished Word document directly from the editor.
+	 */
 	context.subscriptions.push(
 		vscode.commands.registerCommand('pamd.generateDocx', async (contextUri?: vscode.Uri) => {
 			let uri = contextUri;

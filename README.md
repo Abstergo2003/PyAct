@@ -10,6 +10,8 @@ PyAct solves this by introducing `.pamd` files — a powerful format that merges
 ## 🌟 Why PyAct?
 - **Code & Content Together**: Write your Python logic and your Markdown content side-by-side. 
 - **Auto-LaTeX Generation**: Turn standard Python lambda functions directly into LaTeX math equations!
+- **Native Word Documents (DOCX)**: Compile your Markdown straight into fully formatted Microsoft Word Documents, complete with native tables, footnotes, and math!
+- **Custom CSS Styling**: Use standard CSS syntax (via `style.css`) to customize the fonts, colors, and layout of your exported Word Documents!
 - **Component Templates**: Keep your documents clean by splitting them into smaller `<tmp>` templates.
 - **Jupyter-like Experience**: A beautifully integrated VS Code extension makes writing `.pamd` feel like writing a Jupyter Notebook.
 
