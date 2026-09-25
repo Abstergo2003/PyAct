@@ -19,6 +19,10 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.8",
+    install_requires=[
+        "python-docx",
+        "ezdxf"
+    ],
     entry_points={
         "console_scripts": [
             "pyact=pyact.cli:main",

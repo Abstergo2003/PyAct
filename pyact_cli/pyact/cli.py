@@ -17,6 +17,7 @@ def main():
         --output (str): Optional path to save the generated `.md` file.
         --docx (str): Optional path to save the generated `.docx` file.
         --css (str): Optional path to a `.css` file for styling the DOCX output.
+        --lint (bool): Run the linter to check for unused files and variables.
         
     Outputs:
         Writes the generated `.md` and `.docx` files to the filesystem and prints 
@@ -27,6 +28,7 @@ def main():
     parser.add_argument("-o", "--output", help="Output file path (default prints to stdout)")
     parser.add_argument("--docx", help="Also generate a DOCX file at this path")
     parser.add_argument("--css", help="Optional CSS file path to style the DOCX")
+    parser.add_argument("--lint", action="store_true", help="Run the linter on the project to check for unused variables and files")
     
     args = parser.parse_args()
     
@@ -36,6 +38,11 @@ def main():
     
     if filename.endswith(".pamd"):
         filename = filename[:-5]
+        
+    if args.lint:
+        from .linter import run_linter
+        run_linter(filename, directory)
+        return
         
     try:
         build_tree = map_content(filename, directory)
