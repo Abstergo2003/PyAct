@@ -20,8 +20,21 @@ def sanitize_name(name):
 
 def get_unit_from_key(key):
     """
-    Extracts the unit string assuming the key was formatted like 'h_mm' or 'A_cm2'
+    Extracts the unit string assuming the key was formatted like 'h_mm' or 'A_cm2',
+    or uses a hardcoded mapping for known periodic table properties.
     """
+    pt_units = {
+        "atomic_mass": "[u]",
+        "boil": "[K]",
+        "density": "[g/cm3]",
+        "melt": "[K]",
+        "molar_heat": "[J/(mol*K)]",
+        "electron_affinity": "[kJ/mol]",
+        "electronegativity_pauling": "[-]"
+    }
+    if key in pt_units:
+        return pt_units[key]
+        
     parts = key.rsplit('_', 1)
     if len(parts) == 2:
         unit = parts[1]
@@ -45,19 +58,39 @@ def generate_python_classes():
                 print(f"Skipping {file_path} - Invalid JSON")
                 continue
                 
-        # 1. Sanitize Data
+        # 1. Normalize and Sanitize Data
         sanitized_data = {}
-        for series_name, beams in data.items():
+        for series_name, items in data.items():
             clean_series_name = sanitize_name(series_name)
-            new_beams = {}
-            for beam_name, beam_props in beams.items():
-                clean_beam_name = sanitize_name(beam_name)
-                clean_props = {}
-                for prop, val in beam_props.items():
-                    clean_prop = sanitize_name(prop)
-                    clean_props[clean_prop] = val
-                new_beams[clean_beam_name] = clean_props
-            sanitized_data[clean_series_name] = new_beams
+            new_items = {}
+            
+            # Handle both lists of dicts (PeriodicTable) and dicts of dicts (Beam Catalogues)
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        # Use name, id, or symbol as the class attribute key
+                        item_name = item.get('name') or item.get('id') or item.get('symbol') or f"item_{len(new_items)}"
+                        clean_item_name = sanitize_name(str(item_name))
+                        
+                        clean_props = {}
+                        for prop, val in item.items():
+                            if not isinstance(val, (dict, list)): # Skip complex nested objects for simplicity
+                                clean_prop = sanitize_name(str(prop))
+                                clean_props[clean_prop] = val
+                                
+                        new_items[clean_item_name] = clean_props
+                        
+            elif isinstance(items, dict):
+                for item_name, item_props in items.items():
+                    clean_item_name = sanitize_name(str(item_name))
+                    clean_props = {}
+                    for prop, val in item_props.items():
+                        if not isinstance(val, (dict, list)):
+                            clean_prop = sanitize_name(str(prop))
+                            clean_props[clean_prop] = val
+                    new_items[clean_item_name] = clean_props
+                    
+            sanitized_data[clean_series_name] = new_items
             
         # 2. Generate Python File
         base_name = os.path.basename(file_path).replace('.json', '')

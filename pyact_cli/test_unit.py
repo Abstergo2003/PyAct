@@ -1,5 +1,5 @@
 import unittest
-from pamd_helpers.unit import Unit
+from pyact_cli.pamd_helpers.unit import Unit
 
 class TestUnitOperations(unittest.TestCase):
     def setUp(self):
