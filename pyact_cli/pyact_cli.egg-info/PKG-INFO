@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pyact-cli
-Version: 0.5.0
+Version: 0.6.0
 Summary: A CLI tool to compile .pamd files to Markdown.
 Home-page: https://github.com/Abstergo2003/PyAct
 Author: Abstergo2003
@@ -10,11 +10,14 @@ Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+Requires-Dist: python-docx
+Requires-Dist: ezdxf
 Dynamic: author
 Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
+Dynamic: requires-dist
 Dynamic: requires-python
 Dynamic: summary
 

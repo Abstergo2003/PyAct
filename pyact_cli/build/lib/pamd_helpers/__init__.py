@@ -183,3 +183,61 @@ class Footnote:
         Outputs (str): The short inline reference marker to place in the paragraph text.
         """
         return f"[^{self.number}]\n"
+
+def table_to_dxf(headers: List[str], values: List[List[Any]], filename: str, cell_width: float = 50.0, cell_height: float = 10.0) -> str:
+    """
+    Exports a table (headers + values) to a 2D CAD DXF file.
+    
+    Why it is needed:
+    Engineers and designers often need to embed tabulated data (e.g. Bill of Materials, 
+    coordinate tables, parts lists) directly into AutoCAD drawings. This helper converts 
+    a Python table directly into DXF geometry (lines and text) that can be opened in any CAD software.
+    
+    Inputs:
+        headers (List[str]): List of column header names.
+        values (List[List[Any]]): A 2D list containing the row data.
+        filename (str): The output filename (e.g., 'table.dxf').
+        cell_width (float): The width of each cell in drawing units.
+        cell_height (float): The height of each cell in drawing units.
+        
+    Outputs:
+        str: A string confirming the export, formatted as a Markdown link.
+    """
+    try:
+        import ezdxf
+    except ImportError:
+        return f"*(Error: ezdxf library is not installed. Cannot generate {filename})*"
+        
+    doc = ezdxf.new('R2010')
+    msp = doc.modelspace()
+    
+    # Construct full grid data
+    rows = [headers] + values
+    num_rows = len(rows)
+    num_cols = len(headers)
+    
+    # Draw horizontal grid lines
+    for i in range(num_rows + 1):
+        y = -i * cell_height
+        msp.add_line((0, y), (num_cols * cell_width, y))
+        
+    # Draw vertical grid lines
+    for j in range(num_cols + 1):
+        x = j * cell_width
+        msp.add_line((x, 0), (x, -num_rows * cell_height))
+        
+    # Draw text centered in each cell
+    for i, row in enumerate(rows):
+        y = -i * cell_height - (cell_height / 2)
+        for j, cell_val in enumerate(row):
+            if j >= num_cols: continue # Safety bounds
+            x = j * cell_width + (cell_width / 2)
+            msp.add_text(
+                str(cell_val),
+                dxfattribs={
+                    'height': cell_height * 0.4,
+                }
+            ).set_placement((x, y), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+            
+    doc.saveas(filename)
+    return f"*[Successfully exported table to {filename}]({filename})*"

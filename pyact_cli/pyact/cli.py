@@ -3,6 +3,15 @@ import sys
 import os
 from .core import map_content, process_content
 
+def is_cache_valid(build_tree, cache_mtime):
+    file_path = os.path.join(build_tree.get("path", ""), build_tree.get("name", "") + ".pamd")
+    if os.path.exists(file_path) and os.path.getmtime(file_path) > cache_mtime:
+        return False
+    for t in build_tree.get("templates", []):
+        if not is_cache_valid(t, cache_mtime):
+            return False
+    return True
+
 def main():
     """
     Main entry point for the PyAct Command Line Interface.
@@ -46,14 +55,36 @@ def main():
         
     try:
         build_tree = map_content(filename, directory)
-        content = process_content(build_tree)
+        
+        cache_dir = os.path.join(directory, ".pamd-cache")
+        cache_file = os.path.join(cache_dir, f"{filename}.cache.md")
+        use_cache = False
+        
+        if os.path.exists(cache_file):
+            cache_mtime = os.path.getmtime(cache_file)
+            if is_cache_valid(build_tree, cache_mtime):
+                use_cache = True
+                
+        if use_cache:
+            print("pamd-cache: Using cached markdown...")
+            with open(cache_file, "r", encoding="utf-8") as f:
+                content = f.read()
+        else:
+            print("pamd-cache: Cache invalid or missing. Rebuilding...")
+            content = process_content(build_tree)
+            # Write cache
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(content)
         
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(content)
             print(f"Successfully compiled to {args.output}")
         else:
-            print(content)
+            if not args.docx:
+                print(content)
             
         if args.docx:
             from .mdTOword import style_parser, markdown_parser, docx_writer
