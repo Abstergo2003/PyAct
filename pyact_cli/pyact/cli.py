@@ -43,6 +43,7 @@ def main():
     parser.add_argument("-o", "--output", help="Output file path (default prints to stdout)")
     parser.add_argument("--docx", help="Also generate a DOCX file at this path")
     parser.add_argument("--css", help="Optional CSS file path to style the DOCX")
+    parser.add_argument("--conf", help="Optional path to pamd.conf configuration file")
     parser.add_argument("--lint", action="store_true", help="Run the linter on the project to check for unused variables and files")
     
     args = parser.parse_args()
@@ -123,8 +124,25 @@ def main():
                     default_css = os.path.join(os.path.dirname(__file__), "style.css")
                     styles = style_parser(default_css)
                     
+            # Load pamd.conf configuration
+            conf = {}
+            conf_path = None
+            if args.conf:
+                conf_path = os.path.abspath(args.conf)
+            else:
+                local_conf = os.path.join(directory, "pamd.conf")
+                cwd_conf = os.path.join(os.getcwd(), "pamd.conf")
+                if os.path.exists(local_conf):
+                    conf_path = local_conf
+                elif os.path.exists(cwd_conf):
+                    conf_path = cwd_conf
+
+            if conf_path and os.path.exists(conf_path):
+                from .conf_parser import conf_parser
+                conf = conf_parser(conf_path)
+                    
             blocks = markdown_parser(content)
-            docx_writer(blocks, styles, args.docx)
+            docx_writer(blocks, styles, args.docx, config=conf)
             print(f"Successfully compiled DOCX to {args.docx}")
             
     except Exception as e:

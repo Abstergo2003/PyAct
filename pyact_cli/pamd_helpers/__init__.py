@@ -21,6 +21,16 @@ def equation(func: Callable, values: List[Any]) -> str:
     value = func(*values)
     name, sep, tail = source.rpartition("=")
     head, sep, equ = tail.rpartition(":")
+    
+    name = name.strip()
+    if "_" in name:
+        parts = name.split("_", 1)
+        name = f"{parts[0]}_{{{parts[1]}}}"
+        
+    import re
+    greek_pattern = r'(?<![a-zA-Z])(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)(?![a-zA-Z])'
+    name = re.sub(greek_pattern, r'\\\1', name)
+    
     return f"$$ {name} = {py2tex(equ.replace(chr(10), ''))} = {value} $$"
 
 def image(link: str, caption: str) -> str:

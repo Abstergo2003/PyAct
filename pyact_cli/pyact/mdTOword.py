@@ -1,11 +1,12 @@
 import re
 from docx import Document
-from docx.shared import Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.shared import Pt, RGBColor, Inches, Cm, Mm
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import nsdecls, qn
 import math2docx
 from . import css2json
+
 
 def style_parser(css_path: str) -> dict:
     """
@@ -425,7 +426,286 @@ def _restart_list_numbering(doc, p):
     except Exception:
         return None
 
-def docx_writer(blocks: list, styles: dict, output_file: str):
+def _add_xml_field(run, field_name: str):
+    """Inserts a dynamic Word field (like PAGE or NUMPAGES) into a run."""
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = f" {field_name} "
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    t = OxmlElement('w:t')
+    t.text = "1"
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+    
+    r = run._r
+    r.append(fldChar1)
+    r.append(instrText)
+    r.append(fldChar2)
+    r.append(t)
+    r.append(fldChar3)
+
+def _add_styled_header_footer_text(paragraph, text: str, font_rules: dict):
+    """
+    Appends text to a header/footer paragraph, replacing {page} and {pages}
+    tokens with native Word dynamic field elements and applying font styling.
+    """
+    if not text:
+        return
+        
+    pattern = r'(\{page\}|\{pages\}|\{page_number\}|\{total_pages\})'
+    tokens = re.split(pattern, text, flags=re.IGNORECASE)
+    
+    for token in tokens:
+        if not token:
+            continue
+        tok_lower = token.lower()
+        if tok_lower in ('{page}', '{page_number}'):
+            run = paragraph.add_run()
+            _add_xml_field(run, 'PAGE')
+            if font_rules:
+                _apply_css_to_run(run, font_rules)
+        elif tok_lower in ('{pages}', '{total_pages}'):
+            run = paragraph.add_run()
+            _add_xml_field(run, 'NUMPAGES')
+            if font_rules:
+                _apply_css_to_run(run, font_rules)
+        else:
+            run = paragraph.add_run(token)
+            if font_rules:
+                _apply_css_to_run(run, font_rules)
+
+def _configure_header_or_footer(hf_obj, conf_dict: dict, section):
+    """
+    Configures a header or footer object (section.header or section.footer).
+    Supports:
+      - text / content (with align = left|center|right)
+      - left / center / right 3-zone layout
+      - page_number = true
+      - font styling (font_name, font_size, color, italic, bold)
+    """
+    if not conf_dict:
+        return
+        
+    p = hf_obj.paragraphs[0]
+    p.text = ""  # Clear default empty paragraph
+    
+    # Extract font styling options
+    font_rules = {}
+    if 'font_name' in conf_dict:
+        font_rules['font-family'] = conf_dict['font_name']
+    elif 'font' in conf_dict:
+        font_rules['font-family'] = conf_dict['font']
+        
+    if 'font_size' in conf_dict:
+        sz = str(conf_dict['font_size']).strip()
+        if not sz.endswith('pt'): sz = f"{sz}pt"
+        font_rules['font-size'] = sz
+    elif 'size' in conf_dict:
+        sz = str(conf_dict['size']).strip()
+        if not sz.endswith('pt'): sz = f"{sz}pt"
+        font_rules['font-size'] = sz
+        
+    if 'color' in conf_dict:
+        font_rules['color'] = conf_dict['color']
+        
+    if 'bold' in conf_dict:
+        font_rules['font-weight'] = 'bold' if str(conf_dict['bold']).strip().lower() in ('true', 'yes', '1') else 'normal'
+    if 'italic' in conf_dict:
+        font_rules['font-style'] = 'italic' if str(conf_dict['italic']).strip().lower() in ('true', 'yes', '1') else 'normal'
+
+    left_val = conf_dict.get('left')
+    center_val = conf_dict.get('center')
+    right_val = conf_dict.get('right')
+    
+    # Check if page_number is enabled
+    has_page_num = str(conf_dict.get('page_number', '')).strip().lower() in ('true', 'yes', '1') or \
+                   str(conf_dict.get('page_numbers', '')).strip().lower() in ('true', 'yes', '1')
+                   
+    text_val = conf_dict.get('text') or conf_dict.get('content') or conf_dict.get('title')
+    
+    if has_page_num and not (left_val or center_val or right_val or text_val):
+        center_val = "Page {page} of {pages}"
+        
+    if left_val is not None or center_val is not None or right_val is not None:
+        # Multi-zone layout using tab stops
+        content_width = section.page_width - section.left_margin - section.right_margin
+        tab_center = int(content_width // 2)
+        tab_right = int(content_width)
+        
+        p.paragraph_format.tab_stops.add_tab_stop(tab_center, WD_TAB_ALIGNMENT.CENTER)
+        p.paragraph_format.tab_stops.add_tab_stop(tab_right, WD_TAB_ALIGNMENT.RIGHT)
+        
+        # Left zone
+        if left_val:
+            _add_styled_header_footer_text(p, left_val, font_rules)
+            
+        # Center zone
+        if center_val:
+            p.add_run('\t')
+            _add_styled_header_footer_text(p, center_val, font_rules)
+        elif right_val:
+            p.add_run('\t')
+            
+        # Right zone
+        if right_val:
+            p.add_run('\t')
+            _add_styled_header_footer_text(p, right_val, font_rules)
+            
+    elif text_val:
+        align = conf_dict.get('align', 'left').lower()
+        if align == 'center':
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif align == 'right':
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        else:
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            
+        _add_styled_header_footer_text(p, text_val, font_rules)
+
+def _apply_metadata(doc, meta_conf: dict):
+    if not meta_conf:
+        return
+        
+    cp = doc.core_properties
+    meta_map = {
+        'author': 'author',
+        'autor': 'author',
+        'creator': 'author',
+        'title': 'title',
+        'tytul': 'title',
+        'subject': 'subject',
+        'temat': 'subject',
+        'keywords': 'keywords',
+        'slowa_kluczowe': 'keywords',
+        'tags': 'keywords',
+        'category': 'category',
+        'kategoria': 'category',
+        'comments': 'comments',
+        'komentarze': 'comments',
+        'description': 'comments',
+        'opis': 'comments',
+        'status': 'content_status',
+        'content_status': 'content_status',
+        'language': 'language',
+        'lang': 'language',
+        'jezyk': 'language',
+        'version': 'version',
+        'wersja': 'version',
+        'revision': 'revision',
+        'last_modified_by': 'last_modified_by',
+        'identifier': 'identifier',
+        'id': 'identifier',
+    }
+    
+    for k, v in meta_conf.items():
+        norm_k = k.strip().lower()
+        attr = meta_map.get(norm_k, norm_k)
+        if hasattr(cp, attr):
+            try:
+                setattr(cp, attr, str(v))
+            except Exception:
+                pass
+
+def _parse_length(val_str: str):
+    if not val_str:
+        return None
+    s = str(val_str).strip().lower()
+    try:
+        if s.endswith('in') or s.endswith('"'):
+            return Inches(float(s.rstrip('in"').strip()))
+        elif s.endswith('cm'):
+            return Cm(float(s[:-2].strip()))
+        elif s.endswith('mm'):
+            return Mm(float(s[:-2].strip()))
+        elif s.endswith('pt'):
+            return Pt(float(s[:-2].strip()))
+        else:
+            return Inches(float(s))
+    except ValueError:
+        return None
+
+def _apply_page_settings(doc, page_conf: dict):
+    if not page_conf:
+        return
+        
+    for s in doc.sections:
+        if 'orientation' in page_conf:
+            orient = page_conf['orientation'].lower()
+            from docx.enum.section import WD_ORIENT
+            if orient == 'landscape':
+                s.orientation = WD_ORIENT.LANDSCAPE
+                if s.page_width < s.page_height:
+                    s.page_width, s.page_height = s.page_height, s.page_width
+            elif orient == 'portrait':
+                s.orientation = WD_ORIENT.PORTRAIT
+                if s.page_width > s.page_height:
+                    s.page_width, s.page_height = s.page_height, s.page_width
+                    
+        if 'size' in page_conf or 'paper_size' in page_conf:
+            size_name = str(page_conf.get('size') or page_conf.get('paper_size')).lower()
+            if size_name == 'a4':
+                s.page_width = Mm(210)
+                s.page_height = Mm(297)
+            elif size_name == 'letter':
+                s.page_width = Inches(8.5)
+                s.page_height = Inches(11)
+            elif size_name == 'legal':
+                s.page_width = Inches(8.5)
+                s.page_height = Inches(14)
+                
+        # Margins
+        if 'margin' in page_conf or 'margins' in page_conf:
+            m = _parse_length(page_conf.get('margin') or page_conf.get('margins'))
+            if m:
+                s.top_margin = m
+                s.bottom_margin = m
+                s.left_margin = m
+                s.right_margin = m
+                
+        if 'margin_top' in page_conf or 'top_margin' in page_conf:
+            m = _parse_length(page_conf.get('margin_top') or page_conf.get('top_margin'))
+            if m: s.top_margin = m
+        if 'margin_bottom' in page_conf or 'bottom_margin' in page_conf:
+            m = _parse_length(page_conf.get('margin_bottom') or page_conf.get('bottom_margin'))
+            if m: s.bottom_margin = m
+        if 'margin_left' in page_conf or 'left_margin' in page_conf:
+            m = _parse_length(page_conf.get('margin_left') or page_conf.get('left_margin'))
+            if m: s.left_margin = m
+        if 'margin_right' in page_conf or 'right_margin' in page_conf:
+            m = _parse_length(page_conf.get('margin_right') or page_conf.get('right_margin'))
+            if m: s.right_margin = m
+
+def _apply_docx_config(doc: Document, config: dict):
+    """Applies global settings from pamd.conf to the Word document."""
+    if not config:
+        return
+        
+    normalized_config = {k.lower(): v for k, v in config.items() if isinstance(v, dict)}
+    
+    # 1. Page settings
+    page_conf = normalized_config.get('page') or normalized_config.get('margins') or normalized_config.get('document')
+    if page_conf:
+        _apply_page_settings(doc, page_conf)
+        
+    # 2. Metadata
+    meta_conf = normalized_config.get('metadata')
+    if meta_conf:
+        _apply_metadata(doc, meta_conf)
+        
+    # 3. Header & Footer
+    header_conf = normalized_config.get('header')
+    footer_conf = normalized_config.get('footer')
+    
+    for section in doc.sections:
+        if header_conf:
+            _configure_header_or_footer(section.header, header_conf, section)
+        if footer_conf:
+            _configure_header_or_footer(section.footer, footer_conf, section)
+
+def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = None):
     """
     Translates parsed markdown blocks into a Word document and applies CSS styling.
     
@@ -438,12 +718,17 @@ def docx_writer(blocks: list, styles: dict, output_file: str):
         blocks (list): The list of parsed Markdown block tuples (from `markdown_parser`).
         styles (dict): The nested dictionary of CSS rules (from `style_parser`).
         output_file (str): The absolute or relative file path where the resulting .docx should be saved.
+        config (dict): Optional dictionary of global settings parsed from pamd.conf (header, footer, metadata).
         
     Outputs:
         None: This function does not return a value, but it writes a binary .docx file to disk.
     """
     doc = Document()
     current_ordered_numId = None
+    
+    # Global document settings from pamd.conf
+    if config:
+        _apply_docx_config(doc, config)
     
     # Global body style
     if 'body' in styles:

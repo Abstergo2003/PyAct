@@ -48,3 +48,28 @@ This is the first chapter of the book.
 ```
 
 When you compile `main.pamd`, PyAct recursively parses the AST (Abstract Syntax Tree), resolves all child templates relative to the parent's directory, compiles their individual `context()` dictionaries, and merges them into one flat, cohesive output document!
+
+## 3. Global Variables `<glb>`
+
+When building large projects with many nested templates, you often have variables (like the author's name, the project ID, or the company) that you need to access from *anywhere*, without having to pass them around through local `context()` functions.
+
+### The `global.py` file
+Create a standard Python file named `global.py` at the root of your project directory. Inside it, define a function named `global_context()` that returns your global variables dictionary.
+
+```python
+def global_context():
+    return {
+        "company": "Acme Corp",
+        "author": "John Doe",
+        "project_id": "PRJ-993"
+    }
+```
+
+### The `<glb>` injection tag
+In any Markdown cell, across any nested template, you can inject these global variables using the `<glb>` tag!
+
+```markdown
+Welcome to the report for <glb>project_id</glb> prepared by <glb>author</glb> at <glb>company</glb>.
+```
+
+*Note: PyAct's `pamd-cache` engine automatically watches your `global.py` file. If you change a global variable, the cache for your entire nested document tree is instantly invalidated and rebuilt!*

@@ -63,11 +63,30 @@ Run the compiler from your terminal to generate your final Markdown document:
 pyact path/to/your_file.pamd -o output.md
 ```
 
-### 4. Compile to Word (DOCX)
+### 5. Compile to Word (DOCX)
 You can also compile straight to a native Microsoft Word Document, complete with CSS styling! 
 ```bash
 pyact path/to/your_file.pamd -o output.md --docx output.docx
 ```
 *Note: If you have a `style.css` file in the same directory, PyAct will automatically load it to style your Word Document. You can also specify one manually using the `--css path/to/style.css` flag!*
+
+### 6. Configure Word Export via `pamd.conf`
+Control document metadata, running headers, and footers with a `pamd.conf` file:
+
+```ini
+[Header]
+left = My Project
+right = 2026
+
+[Footer]
+left = Confidential
+center = Page {page} of {pages}
+
+[Metadata]
+author = Jane Doe
+title = Monthly Report
+```
+
+PyAct will automatically detect `pamd.conf` in your directory, inject dynamic page numbers (`{page}` / `{pages}`), configure tab stops, and populate document metadata!
 
 That's it! You now have documents ready to be shared, published, or distributed.

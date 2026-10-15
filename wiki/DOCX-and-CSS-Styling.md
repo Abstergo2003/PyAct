@@ -44,3 +44,65 @@ If a file named `style.css` exists in the exact same directory as your `.pamd` f
 - `line-height`: e.g., `1.15`, `1.5`
 - `page-break-before`: `always` | `auto` (Forces a page break before the element)
 - `width` / `height`: e.g., `6in` (Specifically for images/tables)
+
+## 4. Document Settings via `pamd.conf`
+
+To configure global Word document properties such as running headers, footers, metadata, and page layout, create a `pamd.conf` file in your project or `.pamd` directory. PyAct automatically discovers it when exporting with `--docx`.
+
+### Example `pamd.conf`
+
+```ini
+[Header]
+left = My Project
+right = 2026
+font_size = 9pt
+color = #666666
+
+[Footer]
+left = Confidential
+center = Page {page} of {pages}
+font_size = 9pt
+
+[Metadata]
+author = Radek
+title = Structural Engineering Calculations
+subject = PyAct Project
+category = Engineering
+
+[Page]
+orientation = portrait
+size = A4
+margin = 1in
+```
+
+### Supported Sections & Options
+
+#### `[Header]` and `[Footer]`
+- **3-Zone Layout**: `left`, `center`, `right` (automatically positioned using dynamic tab stops aligned to page margins).
+- **Single Block**: `text` or `content` with optional `align = left | center | right`.
+- **Dynamic Page Numbers**: Use `{page}` for the current page and `{pages}` for total pages (e.g. `Page {page} of {pages}`). You can also enable `page_number = true`.
+- **Typography & Styling**:
+  - `font_name` / `font`: Font family (e.g. `Arial`, `Calibri`).
+  - `font_size` / `size`: Font size (e.g. `9pt`, `10pt`).
+  - `color`: Hex color string (e.g. `#888888`).
+  - `bold`: `true` | `false`.
+  - `italic`: `true` | `false`.
+
+#### `[Metadata]`
+Sets Word document properties (`doc.core_properties`):
+- `author` (or `autor` / `creator`)
+- `title` (or `tytul`)
+- `subject` (or `temat`)
+- `keywords` (or `slowa_kluczowe` / `tags`)
+- `category` (or `kategoria`)
+- `comments` (or `description` / `opis`)
+- `status` (or `content_status`)
+- `language` (or `jezyk`)
+- `version` (or `wersja`)
+
+#### `[Page]`
+- `orientation`: `portrait` | `landscape`
+- `size` / `paper_size`: `A4` | `Letter` | `Legal`
+- `margin` / `margins`: e.g., `1in`, `2.5cm`, `20mm`
+- `margin_top`, `margin_bottom`, `margin_left`, `margin_right`: individual margin overrides.
+

@@ -25,6 +25,10 @@ pyact [-h] [-o OUTPUT] [--docx DOCX_PATH] [--css CSS_PATH] input
   Provides a specific `style.css` file to use for styling the `.docx` document. 
   *(Note: If omitted, the CLI will automatically look for a `style.css` file in the same directory as the `input` file. If none exists, it uses the built-in system defaults.)*
 
+- `--conf CONF_PATH`
+  Path to a `pamd.conf` configuration file defining global Word headers, footers, metadata, and page layout.
+  *(Note: If omitted, the CLI automatically looks for `pamd.conf` in the `.pamd` file directory, or the current working directory.)*
+
 - `--lint`
   Runs the PyAct Linter on your project. This tool scans the `.pamd` files in your directory, tracks down nested dependencies, and reports any defined context variables that were never used, as well as dangling `.pamd` files that are never imported.
 
