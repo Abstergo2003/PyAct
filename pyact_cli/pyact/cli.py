@@ -2,7 +2,7 @@ import argparse
 import sys
 import os
 import time
-from .core import map_content, process_content, build_logs
+from .core import map_content, process_content, build_logs, generate_markdown_toc
 
 def is_cache_valid(build_tree, cache_mtime, root_dir=None):
     if root_dir is not None:
@@ -38,6 +38,16 @@ def main():
         Writes the generated `.md` and `.docx` files to the filesystem and prints 
         status messages to stdout/stderr.
     """
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        init_parser = argparse.ArgumentParser(description="PyAct Project Initializer")
+        init_parser.add_argument("command", choices=["init"])
+        init_parser.add_argument("name", nargs="?", default=".", help="Project folder name (default: current directory)")
+        init_parser.add_argument("--template", choices=["default", "engineering", "academic"], default="default", help="Project template to scaffold")
+        init_args = init_parser.parse_args()
+        from .scaffold import init_project
+        init_project(init_args.name, init_args.template)
+        return
+
     parser = argparse.ArgumentParser(description="PyAct CLI - PAMD to Markdown compiler")
     parser.add_argument("input", help="Path to the main .pamd file")
     parser.add_argument("-o", "--output", help="Output file path (default prints to stdout)")
@@ -101,13 +111,14 @@ def main():
                     f.write(f"- {log['file']}: {log['time_ms']:.2f} ms\n")
                 f.write(f"\nTotal Build Time: {total_ms:.2f} ms\n")
         
+        md_output = generate_markdown_toc(content)
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
-                f.write(content)
+                f.write(md_output)
             print(f"Successfully compiled to {args.output}")
         else:
             if not args.docx:
-                print(content)
+                print(md_output)
             
         if args.docx:
             from .mdTOword import style_parser, markdown_parser, docx_writer

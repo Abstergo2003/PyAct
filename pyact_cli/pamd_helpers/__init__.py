@@ -52,6 +52,75 @@ def image(link: str, caption: str) -> str:
     caption_html = f"<span style='text-align: center; display: block; font-style: italic;'>{caption}</span>"
     return f"{image_link} \n {caption_html}"
 
+def plot(fig_or_plt: Any, caption: str = "", filename: str = None, dpi: int = 300, output_dir: str = "images") -> str:
+    """
+    Saves a Matplotlib/Seaborn figure or pyplot module to an image file and returns a styled Markdown image string.
+    
+    Why it is needed:
+    Allows data analysts and engineers to generate plots directly in Python code cells and 
+    seamlessly embed them into both Markdown and Word (DOCX) documents without manual file saving.
+    
+    Inputs:
+        fig_or_plt: A matplotlib Figure object or the matplotlib.pyplot module.
+        caption (str): Caption text to display below the plot.
+        filename (str): Optional file name (e.g. 'beam_deflection.png'). If omitted, a name is automatically generated.
+        dpi (int): Resolution of the exported image (default 300 dpi for sharp printing).
+        output_dir (str): Directory where the image should be saved (default 'images').
+        
+    Outputs:
+        str: A Markdown image tag with an italicized caption span, ready for injection into the document.
+    """
+    import os
+    import time
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        
+    if not filename:
+        if caption:
+            import re
+            clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', caption.strip().lower())[:30].strip('_')
+            filename = f"{clean_name}.png" if clean_name else f"plot_{int(time.time()*1000)}.png"
+        else:
+            filename = f"plot_{int(time.time()*1000)}.png"
+            
+    if not filename.endswith(('.png', '.jpg', '.jpeg', '.svg')):
+        filename += '.png'
+        
+    filepath = os.path.join(output_dir, filename)
+    norm_path = filepath.replace('\\', '/')
+    
+    if hasattr(fig_or_plt, 'savefig'):
+        fig_or_plt.savefig(filepath, dpi=dpi, bbox_inches='tight')
+    elif hasattr(fig_or_plt, 'figure') and hasattr(fig_or_plt.figure, 'savefig'):
+        fig_or_plt.figure.savefig(filepath, dpi=dpi, bbox_inches='tight')
+    elif hasattr(fig_or_plt, 'save'):
+        fig_or_plt.save(filepath)
+    else:
+        raise TypeError(f"Expected a matplotlib Figure or image object with a 'savefig' or 'save' method, got {type(fig_or_plt)}")
+        
+    return image(norm_path, caption)
+
+def callout(text: str, callout_type: str = "note", title: str = None) -> str:
+    """
+    Generates a GitHub-flavored Markdown alert/callout box.
+    
+    Inputs:
+        text (str): The body text of the alert.
+        callout_type (str): 'note', 'tip', 'important', 'warning', or 'caution'.
+        title (str): Optional title overriding the default alert header.
+        
+    Outputs:
+        str: A blockquote formatted alert.
+    """
+    c_type = callout_type.upper()
+    lines = text.strip().split('\n')
+    header = f"> [!{c_type}]"
+    if title:
+        header += f" {title}"
+    body = "\n".join(f"> {line}" for line in lines)
+    return f"{header}\n{body}\n"
+
 def table(headers: List[str], values: List[List[Any]], caption: str, add_no: bool = False, starting_number: int = 1) -> str:
     """
     Generates a Markdown table from Python lists, including a caption.

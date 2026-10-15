@@ -258,3 +258,82 @@ def process_content(build_tree: dict, globals_dict: dict = None):
     })
         
     return file_text
+
+def make_github_slug(heading: str) -> str:
+    """Creates a GitHub-compatible anchor slug from heading text."""
+    clean = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', heading)
+    clean = re.sub(r'[*_`]', '', clean)
+    clean = clean.lower().strip()
+    clean = re.sub(r'[^\w\s-]', '', clean, flags=re.UNICODE)
+    clean = re.sub(r'\s', '-', clean)
+    return clean
+
+def generate_markdown_toc(text: str) -> str:
+    """
+    Replaces `<toc/>`, `<toc>`, `[toc]`, or `<toc title="..."/>` with a GitHub-compatible
+    Markdown Table of Contents.
+    """
+    toc_pattern = r'<(?:toc|TOC)(?:\s+title=["\'](.*?)["\'])?\s*/?>|\[toc\]|\[TOC\]'
+    m = re.search(toc_pattern, text)
+    if not m:
+        return text
+        
+    toc_pos = m.start()
+    title_override = m.group(1)
+    
+    # Scan headings after the TOC tag
+    text_after = text[toc_pos:]
+    lines = text_after.split('\n')
+    
+    in_code = False
+    headings = []
+    for line in lines:
+        ls = line.strip()
+        if ls.startswith('```'):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        h_match = re.match(r'^(#{1,6})\s+(.*)$', ls)
+        if h_match:
+            level = len(h_match.group(1))
+            h_text = h_match.group(2).strip()
+            headings.append((level, h_text))
+            
+    if not headings:
+        # Fallback to scanning whole document if no headings were found after TOC tag
+        lines = text.split('\n')
+        in_code = False
+        for line in lines:
+            ls = line.strip()
+            if ls.startswith('```'):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            h_match = re.match(r'^(#{1,6})\s+(.*)$', ls)
+            if h_match:
+                level = len(h_match.group(1))
+                h_text = h_match.group(2).strip()
+                headings.append((level, h_text))
+                
+    if not headings:
+        return re.sub(toc_pattern, '', text, count=1)
+        
+    base_level = min(h[0] for h in headings)
+    toc_lines = []
+    for level, h_text in headings:
+        indent = "  " * (level - base_level)
+        clean_title = re.sub(r'[*_`]', '', h_text).strip()
+        slug = make_github_slug(h_text)
+        toc_lines.append(f"{indent}- [{clean_title}](#{slug})")
+        
+    toc_header = ""
+    if title_override:
+        if title_override.lower() not in ('none', 'false', 'no'):
+            toc_header = f"## {title_override}\n"
+    else:
+        toc_header = "## Table of Contents\n"
+        
+    full_toc = toc_header + "\n".join(toc_lines) + "\n"
+    return re.sub(toc_pattern, lambda _: full_toc, text, count=1)

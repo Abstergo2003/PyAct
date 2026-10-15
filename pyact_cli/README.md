@@ -89,4 +89,11 @@ title = Monthly Report
 
 PyAct will automatically detect `pamd.conf` in your directory, inject dynamic page numbers (`{page}` / `{pages}`), configure tab stops, and populate document metadata!
 
+### 7. Scaffolding New Projects with `pyact init`
+Quickly spin up a new project ready to compile:
+```bash
+pyact init my_project --template engineering
+```
+Templates: `default`, `engineering`, `academic`.
+
 That's it! You now have documents ready to be shared, published, or distributed.

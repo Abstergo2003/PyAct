@@ -1,7 +1,9 @@
+import os
 import re
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm, Mm
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT, WD_TAB_LEADER
+from docx.enum.section import WD_SECTION, WD_ORIENT
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 import math2docx
@@ -31,35 +33,48 @@ def style_parser(css_path: str) -> dict:
         print(f"Warning: Could not parse CSS ({e})")
         return {}
 
+def _parse_quote_block(quote_lines: list) -> tuple:
+    """Parses a group of quote lines into an alert callout or standard blockquote."""
+    clean_lines = [re.sub(r'^>\s?', '', ql).strip() for ql in quote_lines]
+    first_line = clean_lines[0] if clean_lines else ""
+    m = re.match(r'^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s+(.*))?$', first_line, re.IGNORECASE)
+    if m:
+        c_type = m.group(1).upper()
+        header_text = m.group(2).strip() if m.group(2) else ""
+        if len(clean_lines) > 1:
+            title = header_text if header_text else c_type.capitalize()
+            body = clean_lines[1:]
+        else:
+            title = c_type.capitalize()
+            body = [header_text] if header_text else []
+        return ('callout', c_type, title, body)
+    else:
+        return ('callout', 'BLOCKQUOTE', '', clean_lines)
+
 def markdown_parser(md_text: str) -> list:
     """
     Parses raw Markdown text into a structured list of block tuples.
-    
-    Why it is needed:
-    Because python-docx generates documents block-by-block (paragraphs, tables, headings), 
-    we need to break down the raw string of Markdown text into distinct, classified chunks 
-    that our DOCX writer can loop through and translate into native Word elements.
-    
-    Inputs:
-        md_text (str): The complete raw Markdown text string.
-        
-    Outputs:
-        list: A list of tuples where each tuple represents a block element.
-              Examples: 
-              - ('heading', 2, 'Title Text')
-              - ('paragraph', 'Some plain text')
-              - ('list', 'List item text', 'ordered')
-              - ('math', 'x = 2')
-              - ('table', ['|Header|', '|---|', '|Data|'])
     """
     blocks = []
     lines = md_text.split('\n')
     
     current_table = []
+    current_quote = []
     
     for line in lines:
         line_s = line.strip()
         
+        # Blockquote / Callout Parsing
+        if line_s.startswith('>'):
+            if current_table:
+                blocks.append(('table', current_table))
+                current_table = []
+            current_quote.append(line_s)
+            continue
+        elif current_quote:
+            blocks.append(_parse_quote_block(current_quote))
+            current_quote = []
+            
         # Table Parsing
         if line_s.startswith('|') and line_s.endswith('|'):
             current_table.append(line_s)
@@ -71,8 +86,31 @@ def markdown_parser(md_text: str) -> list:
         if not line_s:
             continue
             
+        # Table of Contents Parsing
+        if line_s.lower() in ('<toc/>', '<toc>', '[toc]'):
+            blocks.append(('toc', 'Table of Contents'))
+            
+        elif re.match(r'^<toc\s+title=["\'](.*?)["\']\s*/?>', line_s, re.IGNORECASE):
+            m = re.match(r'^<toc\s+title=["\'](.*?)["\']\s*/?>', line_s, re.IGNORECASE)
+            blocks.append(('toc', m.group(1)))
+            
+        # Page Break Parsing
+        elif line_s.lower() in ('<pagebreak/>', '<pagebreak>', '<page-break/>', '<pb/>', '<pb>', '<div style="page-break-after: always;"></div>'):
+            blocks.append(('pagebreak',))
+            
+        # Section Break Parsing
+        elif line_s.lower() in ('<sectionbreak/>', '<sectionbreak>', '<sb/>', '<sb>'):
+            blocks.append(('sectionbreak',))
+            
+        # Landscape Orientation Blocks
+        elif line_s.lower() in ('<landscape>', '<landscape/>'):
+            blocks.append(('landscape_start',))
+            
+        elif line_s.lower() in ('</landscape>',):
+            blocks.append(('landscape_end',))
+
         # Heading Parsing
-        if line_s.startswith('#'):
+        elif line_s.startswith('#'):
             level = len(line_s) - len(line_s.lstrip('#'))
             text = line_s.lstrip('#').strip()
             blocks.append(('heading', level, text))
@@ -96,6 +134,8 @@ def markdown_parser(md_text: str) -> list:
             
     if current_table:
         blocks.append(('table', current_table))
+    if current_quote:
+        blocks.append(_parse_quote_block(current_quote))
         
     return blocks
 
@@ -288,24 +328,39 @@ def _add_hyperlink(paragraph, text, url, styles, tag):
     paragraph._p.append(hyperlink)
 
 def _add_image(paragraph, url, caption, styles):
-    """Adds an inline image fetched from URL."""
+    """Adds an inline image fetched from URL or local file path."""
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            image_stream = io.BytesIO(response.read())
-        
+        image_stream = None
+        if url.startswith(('http://', 'https://')):
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                image_stream = io.BytesIO(response.read())
+        elif os.path.exists(url):
+            with open(url, 'rb') as f:
+                image_stream = io.BytesIO(f.read())
+        elif os.path.exists(os.path.abspath(url)):
+            with open(os.path.abspath(url), 'rb') as f:
+                image_stream = io.BytesIO(f.read())
+                
+        if image_stream is None:
+            paragraph.add_run(f"[Image Failed: {url}]")
+            return
+            
         run = paragraph.add_run()
         
         # Apply CSS dimensions if available
         width = None
         if 'image' in styles and 'width' in styles['image']:
-            w_str = styles['image']['width']
-            if 'in' in w_str: width = docx.shared.Inches(float(w_str.replace('in', '').strip()))
+            w_str = str(styles['image']['width']).strip().lower()
+            if 'in' in w_str: width = Inches(float(w_str.replace('in', '').strip()))
+            elif 'cm' in w_str: width = Cm(float(w_str.replace('cm', '').strip()))
+            elif 'mm' in w_str: width = Mm(float(w_str.replace('mm', '').strip()))
+            elif 'pt' in w_str: width = Pt(float(w_str.replace('pt', '').strip()))
             
         if width:
             run.add_picture(image_stream, width=width)
         else:
-            run.add_picture(image_stream, width=docx.shared.Inches(4))
+            run.add_picture(image_stream, width=Inches(4))
             
     except Exception as e:
         paragraph.add_run(f"[Image Failed: {url}]")
@@ -705,23 +760,213 @@ def _apply_docx_config(doc: Document, config: dict):
         if footer_conf:
             _configure_header_or_footer(section.footer, footer_conf, section)
 
+def _add_callout_box(doc, callout_type: str, title: str, body_lines: list, styles: dict):
+    """Renders an alert callout box or blockquote as a styled 1x1 table."""
+    table = doc.add_table(rows=1, cols=1)
+    table.autofit = False
+    
+    theme = {
+        'NOTE': {'border': '0969DA', 'bg': 'F0F7FF', 'title_col': (9, 105, 218)},
+        'TIP': {'border': '1A7F37', 'bg': 'F0FFF4', 'title_col': (26, 127, 55)},
+        'IMPORTANT': {'border': '8250DF', 'bg': 'F8F5FF', 'title_col': (130, 80, 223)},
+        'WARNING': {'border': '9A6700', 'bg': 'FFFBEB', 'title_col': (154, 103, 0)},
+        'CAUTION': {'border': 'CF222E', 'bg': 'FFF1F2', 'title_col': (207, 34, 46)},
+        'BLOCKQUOTE': {'border': 'D0D7DE', 'bg': 'F6F8FA', 'title_col': (87, 96, 106)},
+    }
+    cfg = theme.get(callout_type.upper(), theme['NOTE'])
+    
+    tblPr = table._tbl.tblPr
+    tblW = parse_xml(f'<w:tblW {nsdecls("w")} w:w="5000" w:type="pct"/>')
+    tblPr.append(tblW)
+    
+    tblBorders = parse_xml(f'''
+        <w:tblBorders {nsdecls("w")}>
+            <w:top w:val="none"/>
+            <w:left w:val="none"/>
+            <w:bottom w:val="none"/>
+            <w:right w:val="none"/>
+            <w:insideH w:val="none"/>
+            <w:insideV w:val="none"/>
+        </w:tblBorders>
+    ''')
+    tblPr.append(tblBorders)
+    
+    cell = table.cell(0, 0)
+    tcPr = cell._tc.get_or_add_tcPr()
+    
+    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{cfg["bg"]}"/>')
+    tcPr.append(shd)
+    
+    tcBorders = parse_xml(f'''
+        <w:tcBorders {nsdecls("w")}>
+            <w:top w:val="none"/>
+            <w:left w:val="single" w:sz="36" w:space="0" w:color="{cfg['border']}"/>
+            <w:bottom w:val="none"/>
+            <w:right w:val="none"/>
+        </w:tcBorders>
+    ''')
+    tcPr.append(tcBorders)
+    
+    tcMar = parse_xml(f'''
+        <w:tcMar {nsdecls("w")}>
+            <w:top w:w="120" w:type="dxa"/>
+            <w:bottom w:w="120" w:type="dxa"/>
+            <w:left w:w="180" w:type="dxa"/>
+            <w:right w:w="180" w:type="dxa"/>
+        </w:tcMar>
+    ''')
+    tcPr.append(tcMar)
+    
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(3)
+    
+    if title:
+        run_title = p.add_run()
+        if callout_type != 'BLOCKQUOTE':
+            if title.upper() == callout_type:
+                run_title.text = callout_type
+            else:
+                run_title.text = f"{callout_type}: {title}"
+        else:
+            run_title.text = title
+        run_title.bold = True
+        r, g, b = cfg['title_col']
+        run_title.font.color.rgb = RGBColor(r, g, b)
+        
+    for idx, line in enumerate(body_lines):
+        if not title and idx == 0:
+            p_body = p
+        else:
+            p_body = cell.add_paragraph()
+        p_body.paragraph_format.space_before = Pt(0)
+        p_body.paragraph_format.space_after = Pt(2)
+        _process_inline(p_body, line, styles, 'p')
+        
+    p_spacer = doc.add_paragraph()
+    p_spacer.paragraph_format.space_before = Pt(0)
+    p_spacer.paragraph_format.space_after = Pt(4)
+
+def _add_table_of_contents(doc, title="Table of Contents", headings=None, styles=None):
+    """Inserts a native Word Table of Contents with dynamic updating and pre-populated entries."""
+    if headings is None:
+        headings = []
+    if styles is None:
+        styles = {}
+        
+    try:
+        settings = doc.settings.element
+        if not settings.xpath('w:updateFields'):
+            update_fields = OxmlElement('w:updateFields')
+            update_fields.set(qn('w:val'), 'true')
+            settings.append(update_fields)
+    except Exception:
+        pass
+        
+    if title and title.lower() not in ('none', 'false', 'no'):
+        p_title = doc.add_heading(title, level=1)
+        if 'h1' in styles:
+            _apply_paragraph_formatting(p_title, styles['h1'])
+        
+    p_first = doc.add_paragraph()
+    p_first.paragraph_format.space_before = Pt(2)
+    p_first.paragraph_format.space_after = Pt(2)
+    
+    r_begin = p_first.add_run()
+    fld1 = OxmlElement('w:fldChar')
+    fld1.set(qn('w:fldCharType'), 'begin')
+    r_begin._r.append(fld1)
+    
+    r_instr = p_first.add_run()
+    instr = OxmlElement('w:instrText')
+    instr.set(qn('xml:space'), 'preserve')
+    instr.text = ' TOC \\o "1-3" \\h \\z \\u '
+    r_instr._r.append(instr)
+    
+    r_sep = p_first.add_run()
+    fld2 = OxmlElement('w:fldChar')
+    fld2.set(qn('w:fldCharType'), 'separate')
+    r_sep._r.append(fld2)
+    
+    if headings:
+        base_level = min(h[1] for h in headings)
+        section = doc.sections[-1]
+        content_width = section.page_width - section.left_margin - section.right_margin
+        
+        for i, h_block in enumerate(headings):
+            h_level, h_text = h_block[1], h_block[2]
+            bm_name = f"_Toc_{i}"
+            rel_level = h_level - base_level
+            indent_in = max(0, rel_level * 0.25)
+            
+            p = p_first if i == 0 else doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after = Pt(2)
+            if indent_in > 0:
+                p.paragraph_format.left_indent = Inches(indent_in)
+                
+            tab_pos = content_width - Inches(indent_in)
+            p.paragraph_format.tab_stops.add_tab_stop(tab_pos, WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+            
+            hyperlink = OxmlElement('w:hyperlink')
+            hyperlink.set(qn('w:anchor'), bm_name)
+            
+            r_text = OxmlElement('w:r')
+            t = OxmlElement('w:t')
+            t.text = h_text
+            r_text.append(t)
+            hyperlink.append(r_text)
+            
+            r_tab = OxmlElement('w:r')
+            tab = OxmlElement('w:tab')
+            r_tab.append(tab)
+            hyperlink.append(r_tab)
+            
+            fld_p1 = OxmlElement('w:fldChar')
+            fld_p1.set(qn('w:fldCharType'), 'begin')
+            r_p1 = OxmlElement('w:r')
+            r_p1.append(fld_p1)
+            
+            instr_p = OxmlElement('w:instrText')
+            instr_p.set(qn('xml:space'), 'preserve')
+            instr_p.text = f' PAGEREF {bm_name} \\h '
+            r_pinstr = OxmlElement('w:r')
+            r_pinstr.append(instr_p)
+            
+            fld_p2 = OxmlElement('w:fldChar')
+            fld_p2.set(qn('w:fldCharType'), 'separate')
+            r_p2 = OxmlElement('w:r')
+            r_p2.append(fld_p2)
+            
+            r_pnum = OxmlElement('w:r')
+            t_pnum = OxmlElement('w:t')
+            t_pnum.text = str(max(1, h_level))
+            r_pnum.append(t_pnum)
+            
+            fld_p3 = OxmlElement('w:fldChar')
+            fld_p3.set(qn('w:fldCharType'), 'end')
+            r_p3 = OxmlElement('w:r')
+            r_p3.append(fld_p3)
+            
+            hyperlink.append(r_p1)
+            hyperlink.append(r_pinstr)
+            hyperlink.append(r_p2)
+            hyperlink.append(r_pnum)
+            hyperlink.append(r_p3)
+            
+            p._p.append(hyperlink)
+            
+    p_end = doc.add_paragraph()
+    p_end.paragraph_format.space_before = Pt(0)
+    p_end.paragraph_format.space_after = Pt(4)
+    r_end = p_end.add_run()
+    fld_end = OxmlElement('w:fldChar')
+    fld_end.set(qn('w:fldCharType'), 'end')
+    r_end._r.append(fld_end)
+
 def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = None):
     """
     Translates parsed markdown blocks into a Word document and applies CSS styling.
-    
-    Why it is needed:
-    This is the core generation engine. It takes the abstract syntax structure generated 
-    by `markdown_parser()` and the style rules from `style_parser()`, loops through them, 
-    and issues the corresponding `python-docx` commands to physically build the `.docx` file.
-    
-    Inputs:
-        blocks (list): The list of parsed Markdown block tuples (from `markdown_parser`).
-        styles (dict): The nested dictionary of CSS rules (from `style_parser`).
-        output_file (str): The absolute or relative file path where the resulting .docx should be saved.
-        config (dict): Optional dictionary of global settings parsed from pamd.conf (header, footer, metadata).
-        
-    Outputs:
-        None: This function does not return a value, but it writes a binary .docx file to disk.
     """
     doc = Document()
     current_ordered_numId = None
@@ -736,13 +981,47 @@ def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = Non
         _apply_css_to_run(normal_style, styles['body'])
         _apply_paragraph_formatting(normal_style, styles['body'])
 
+    # Pre-scan headings for Table of Contents
+    headings_for_toc = []
+    toc_seen_scan = False
+    for b in blocks:
+        if b[0] == 'toc':
+            toc_seen_scan = True
+            continue
+        if b[0] == 'heading' and toc_seen_scan:
+            headings_for_toc.append(b)
+            
+    if not headings_for_toc:
+        headings_for_toc = [b for b in blocks if b[0] == 'heading']
+
+    toc_seen = False
+    heading_counter = 0
+
     for block in blocks:
         btype = block[0]
         
         if btype == 'heading':
             level, text = block[1], block[2]
             p = doc.add_heading('', level=level)
-            _process_inline(p, text, styles, f'h{level}')
+            
+            if toc_seen:
+                bm_name = f"_Toc_{heading_counter}"
+                bm_id = str(2000 + heading_counter)
+                heading_counter += 1
+                
+                bm_start = OxmlElement('w:bookmarkStart')
+                bm_start.set(qn('w:id'), bm_id)
+                bm_start.set(qn('w:name'), bm_name)
+                p._p.append(bm_start)
+                
+                _process_inline(p, text, styles, f'h{level}')
+                
+                bm_end = OxmlElement('w:bookmarkEnd')
+                bm_end.set(qn('w:id'), bm_id)
+                p._p.append(bm_end)
+            else:
+                _process_inline(p, text, styles, f'h{level}')
+                
             if f'h{level}' in styles:
                 _apply_paragraph_formatting(p, styles[f'h{level}'])
                 
@@ -752,6 +1031,10 @@ def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = Non
             if 'p' in styles:
                 _apply_paragraph_formatting(p, styles['p'])
             _process_inline(p, text, styles, 'p')
+            
+        elif btype == 'callout':
+            c_type, title, body_lines = block[1], block[2], block[3]
+            _add_callout_box(doc, c_type, title, body_lines, styles)
                 
         elif btype == 'list':
             text = block[1]
@@ -804,6 +1087,29 @@ def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = Non
                         table.cell(r_idx, c_idx).text = val
                 if 'table' in styles:
                     pass
+
+        elif btype == 'toc':
+            toc_seen = True
+            title = block[1]
+            _add_table_of_contents(doc, title, headings_for_toc, styles)
+            
+        elif btype == 'pagebreak':
+            doc.add_page_break()
+            
+        elif btype == 'sectionbreak':
+            doc.add_section(WD_SECTION.NEW_PAGE)
+            
+        elif btype == 'landscape_start':
+            new_sec = doc.add_section(WD_SECTION.NEW_PAGE)
+            new_sec.orientation = WD_ORIENT.LANDSCAPE
+            if new_sec.page_width < new_sec.page_height:
+                new_sec.page_width, new_sec.page_height = new_sec.page_height, new_sec.page_width
+                
+        elif btype == 'landscape_end':
+            new_sec = doc.add_section(WD_SECTION.NEW_PAGE)
+            new_sec.orientation = WD_ORIENT.PORTRAIT
+            if new_sec.page_width > new_sec.page_height:
+                new_sec.page_width, new_sec.page_height = new_sec.page_height, new_sec.page_width
 
     doc.save(output_file)
 

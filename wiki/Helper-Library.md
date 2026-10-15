@@ -112,3 +112,38 @@ from pyact_cli.pamd_helpers.catalogue.Chemistry.PeriodicTable import PeriodicTab
 fck = Concrete().C30_37["fck"]
 ti_density = PeriodicTable().elements.Titanium["density"]
 ```
+
+## 8. Plotting and Figures (`pamd_helpers.plot`)
+
+Seamlessly embed charts, graphs, and figures from **Matplotlib**, **Seaborn**, or **Pillow** directly into your documents. The `plot` helper saves the figure into an images folder and outputs a Markdown image tag that renders in both Markdown and Microsoft Word (DOCX).
+
+```python
+import matplotlib.pyplot as plt
+import pamd_helpers
+
+def context():
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.plot([0, 1, 2, 3], [0, 5, 20, 45], 'r-', label='Moment Diagram')
+    ax.set_title('Bending Moment')
+    ax.legend()
+    
+    chart_md = pamd_helpers.plot(fig, caption="Bending Moment along Span", filename="moment_diagram.png")
+    plt.close(fig)
+    
+    return {"moment_chart": chart_md}
+```
+
+In your Markdown:
+```markdown
+## Structural Response
+<ctx>moment_chart</ctx>
+```
+
+## 9. Callouts and Alerts (`pamd_helpers.callout`)
+
+Generate styled GitHub-flavored Markdown alert boxes:
+
+```python
+warning_box = pamd_helpers.callout("Check shear capacity at support per EN 1992-1-1.", callout_type="warning", title="Safety Check")
+```
+Supported types: `'note'`, `'tip'`, `'important'`, `'warning'`, `'caution'`.

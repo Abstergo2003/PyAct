@@ -36,7 +36,8 @@ def css_to_dict(css_string: str) -> dict:
                 continue
             if ':' in line:
                 key, val = line.split(':', 1)
-                rules[key.strip()] = val.strip()
+                val_clean = re.sub(r'\s*!important\s*$', '', val.strip(), flags=re.IGNORECASE).strip()
+                rules[key.strip()] = val_clean
         
         # Handle comma-separated selectors (e.g., 'h1, h2, h3')
         for sel in selector.split(','):

@@ -5,8 +5,26 @@ The PyAct Compiler is invoked from the command line using the `pyact` command (o
 ## Usage
 
 ```bash
-pyact [-h] [-o OUTPUT] [--docx DOCX_PATH] [--css CSS_PATH] input
+# Compile a document
+pyact [-h] [-o OUTPUT] [--docx DOCX_PATH] [--css CSS_PATH] [--conf CONF_PATH] input
+
+# Initialize a new project
+pyact init [PROJECT_NAME] [--template default|engineering|academic]
 ```
+
+## Project Initializer (`pyact init`)
+
+Scaffolds a complete project with boilerplate files:
+- `main.pamd`: Starter document with code and markdown cells.
+- `global.py`: Global variables dictionary.
+- `pamd.conf`: Word headers, footers, metadata, and page settings.
+- `style.css`: Default typography and colors.
+- `.gitignore`: Common ignore rules.
+
+Templates available:
+- `default`: General-purpose starter with calculations and checklists.
+- `engineering`: Material properties, Eurocode equations, and tables.
+- `academic`: Abstract, footnotes, and citation links.
 
 ## Positional Arguments
 

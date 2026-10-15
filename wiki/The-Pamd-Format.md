@@ -73,3 +73,78 @@ Welcome to the report for <glb>project_id</glb> prepared by <glb>author</glb> at
 ```
 
 *Note: PyAct's `pamd-cache` engine automatically watches your `global.py` file. If you change a global variable, the cache for your entire nested document tree is instantly invalidated and rebuilt!*
+
+## 4. Native Table of Contents `<toc/>`
+
+You can inject an interactive Table of Contents into your document by adding the `<toc/>` tag:
+
+```markdown
+# Comprehensive Engineering Report
+
+<toc/>
+
+<pagebreak/>
+
+## 1. Introduction
+...
+```
+
+When compiling to Markdown, PyAct automatically generates a hyperlinked Table of Contents linked to the document's headings. When exporting to Word (`--docx`), PyAct builds a native Microsoft Word TOC with pre-populated heading entries, dot leader tab stops, internal navigation bookmarks, dynamic `PAGEREF` fields, and `w:updateFields` enabled.
+
+Custom titles are supported:
+```markdown
+<toc title="Document Contents"/>
+```
+
+## 5. Alerts & Callouts (`> [!IMPORTANT]`, `pamd_helpers.callout`)
+
+PyAct supports GitHub-flavored Markdown alert callouts and blockquotes, rendering them into color-accented 1x1 callout boxes with shaded backgrounds in Word (`.docx`) and native blockquotes in Markdown:
+
+```markdown
+> [!NOTE] Implementation Note
+> Default parameters will be used if omitted.
+
+> [!IMPORTANT] Compliance Notice
+> Must comply with Eurocode standards.
+
+> [!WARNING] High Stress Area
+> Exceeds standard allowable limits.
+```
+
+Supported alert types:
+- `[!NOTE]` (Blue border and soft blue background)
+- `[!TIP]` (Green border and soft green background)
+- `[!IMPORTANT]` (Purple border and soft lavender background)
+- `[!WARNING]` (Amber/Orange border and soft warm background)
+- `[!CAUTION]` (Red border and soft pink background)
+- Standard quotes `> Text` (Gray border and soft light gray background)
+
+You can also generate callouts programmatically using [`pamd_helpers.callout()`](Helper-Library.md).
+
+## 6. Page Breaks & Section Layouts (`<pagebreak/>`, `<landscape>`)
+
+PyAct provides native tags to control pagination and page orientation in Word exports:
+
+### Page Breaks
+Insert `<pagebreak/>` (or `<pb/>`) anywhere to push subsequent content onto a new page:
+```markdown
+## Chapter 1
+Content here...
+
+<pagebreak/>
+
+## Chapter 2
+Starts on a clean page!
+```
+
+### Landscape Sections
+Wrap wide tables or extensive charts in `<landscape>...</landscape>`:
+```markdown
+<landscape>
+# Wide Beam Property Table
+<ctx>wide_table</ctx>
+</landscape>
+```
+PyAct automatically creates a dedicated horizontal section in Word, renders the content, and restores standard portrait orientation afterward!
+
+
