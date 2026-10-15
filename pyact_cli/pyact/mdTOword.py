@@ -82,11 +82,11 @@ def markdown_parser(md_text: str) -> list:
             blocks.append(('list', text, 'unordered'))
             
         elif re.match(r'^\d+\.\s+', line_s):
-            m = re.match(r'^\d+\.\s+(.*)', line_s)
-            blocks.append(('list', m.group(1), 'ordered'))
+            m = re.match(r'^(\d+)\.\s+(.*)', line_s)
+            blocks.append(('list', m.group(2), 'ordered', int(m.group(1))))
             
         # Math Block Parsing
-        elif line_s.startswith('$$') and line_s.endswith('$$'):
+        elif (line_s.startswith('$$') and line_s.endswith('$$')) or (line_s.startswith('$') and line_s.endswith('$') and len(line_s) >= 2):
             blocks.append(('math', line_s.strip('$').strip()))
             
         # Standard Paragraph
@@ -312,15 +312,17 @@ def _add_image(paragraph, url, caption, styles):
 def _process_inline(paragraph, text, styles, tag):
     """Parses text for images, links, math, and bold/italic."""
     # Simple regex to split by math, image, or link. Captures the match as a group.
-    # Group 5: Footnote definition [^1]: ...
-    # Group 6: Footnote annotation [^1]
-    pattern = r'(\$\$.*?\$\$)|(!\[.*?\]\(.*?\))|(\[.*?\]\(.*?\))|(<span.*?>.*?</span>)|(\[\^.*?\]:.*?$)|(\[\^.*?\])'
+    # Group 1: Double $$ math
+    # Group 2: Single $ math
+    # Group 6: Footnote definition [^1]: ...
+    # Group 7: Footnote annotation [^1]
+    pattern = r'(\$\$.*?\$\$)|(\$.*?\$)|(!\[.*?\]\(.*?\))|(\[.*?\]\(.*?\))|(<span.*?>.*?</span>)|(\[\^.*?\]:.*?$)|(\[\^.*?\])'
     parts = re.split(pattern, text)
     
     for part in parts:
         if not part: continue
         
-        if part.startswith('$$') and part.endswith('$$'):
+        if (part.startswith('$$') and part.endswith('$$')) or (part.startswith('$') and part.endswith('$') and len(part) >= 2):
             math_text = part.strip('$').strip()
             try:
                 math2docx.add_math(paragraph, math_text)
@@ -381,6 +383,48 @@ def _process_inline(paragraph, text, styles, tag):
                     run = paragraph.add_run(subpart)
                     if tag in styles: _apply_css_to_run(run, styles[tag])
 
+def _restart_list_numbering(doc, p):
+    try:
+        num_part = doc.part.numbering_part
+        numbering = num_part.numbering_definitions._numbering
+        nums = numbering.xpath('w:num')
+        if not nums: return None
+        max_id = max([int(n.get(qn('w:numId'))) for n in nums])
+        new_id = max_id + 1
+        
+        list_num = numbering.xpath('w:num[@w:numId="5"]')
+        if not list_num: list_num = nums
+        abstract_id = list_num[0].xpath('w:abstractNumId/@w:val')[0]
+        
+        new_num = OxmlElement('w:num')
+        new_num.set(qn('w:numId'), str(new_id))
+        ab_num_id = OxmlElement('w:abstractNumId')
+        ab_num_id.set(qn('w:val'), abstract_id)
+        new_num.append(ab_num_id)
+        
+        lvl_override = OxmlElement('w:lvlOverride')
+        lvl_override.set(qn('w:ilvl'), "0")
+        start_override = OxmlElement('w:startOverride')
+        start_override.set(qn('w:val'), "1")
+        lvl_override.append(start_override)
+        new_num.append(lvl_override)
+        
+        numbering.append(new_num)
+        
+        pPr = p._p.get_or_add_pPr()
+        numPr = OxmlElement('w:numPr')
+        ilvl = OxmlElement('w:ilvl')
+        ilvl.set(qn('w:val'), "0")
+        numId_el = OxmlElement('w:numId')
+        numId_el.set(qn('w:val'), str(new_id))
+        numPr.append(ilvl)
+        numPr.append(numId_el)
+        pPr.append(numPr)
+        
+        return new_id
+    except Exception:
+        return None
+
 def docx_writer(blocks: list, styles: dict, output_file: str):
     """
     Translates parsed markdown blocks into a Word document and applies CSS styling.
@@ -399,6 +443,7 @@ def docx_writer(blocks: list, styles: dict, output_file: str):
         None: This function does not return a value, but it writes a binary .docx file to disk.
     """
     doc = Document()
+    current_ordered_numId = None
     
     # Global body style
     if 'body' in styles:
@@ -426,8 +471,27 @@ def docx_writer(blocks: list, styles: dict, output_file: str):
         elif btype == 'list':
             text = block[1]
             list_type = block[2] if len(block) > 2 else 'unordered'
+            num_val = block[3] if len(block) > 3 else None
+            
             style = 'List Number' if list_type == 'ordered' else 'List Bullet'
             p = doc.add_paragraph(style=style)
+            
+            if list_type == 'ordered':
+                if num_val == 1:
+                    new_id = _restart_list_numbering(doc, p)
+                    if new_id:
+                        current_ordered_numId = new_id
+                elif current_ordered_numId:
+                    pPr = p._p.get_or_add_pPr()
+                    numPr = OxmlElement('w:numPr')
+                    ilvl = OxmlElement('w:ilvl')
+                    ilvl.set(qn('w:val'), "0")
+                    numId_el = OxmlElement('w:numId')
+                    numId_el.set(qn('w:val'), str(current_ordered_numId))
+                    numPr.append(ilvl)
+                    numPr.append(numId_el)
+                    pPr.append(numPr)
+                    
             if 'list' in styles:
                 _apply_paragraph_formatting(p, styles['list'])
             _process_inline(p, text, styles, 'list')

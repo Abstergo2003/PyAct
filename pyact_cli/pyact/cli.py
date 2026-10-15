@@ -1,9 +1,15 @@
 import argparse
 import sys
 import os
-from .core import map_content, process_content
+import time
+from .core import map_content, process_content, build_logs
 
-def is_cache_valid(build_tree, cache_mtime):
+def is_cache_valid(build_tree, cache_mtime, root_dir=None):
+    if root_dir is not None:
+        global_file = os.path.join(root_dir, "global.py")
+        if os.path.exists(global_file) and os.path.getmtime(global_file) > cache_mtime:
+            return False
+
     file_path = os.path.join(build_tree.get("path", ""), build_tree.get("name", "") + ".pamd")
     if os.path.exists(file_path) and os.path.getmtime(file_path) > cache_mtime:
         return False
@@ -62,7 +68,7 @@ def main():
         
         if os.path.exists(cache_file):
             cache_mtime = os.path.getmtime(cache_file)
-            if is_cache_valid(build_tree, cache_mtime):
+            if is_cache_valid(build_tree, cache_mtime, directory):
                 use_cache = True
                 
         if use_cache:
@@ -71,12 +77,28 @@ def main():
                 content = f.read()
         else:
             print("pamd-cache: Cache invalid or missing. Rebuilding...")
+            build_logs.clear()
+            
+            total_start = time.perf_counter()
             content = process_content(build_tree)
+            total_end = time.perf_counter()
+            total_ms = (total_end - total_start) * 1000
+            
             # Write cache
             if not os.path.exists(cache_dir):
                 os.makedirs(cache_dir)
             with open(cache_file, "w", encoding="utf-8") as f:
                 f.write(content)
+                
+            # Write build log
+            log_file = os.path.join(cache_dir, "build.log")
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.write("PyAct Build Log\n")
+                f.write("================\n\n")
+                f.write("File Execution Times:\n")
+                for log in build_logs:
+                    f.write(f"- {log['file']}: {log['time_ms']:.2f} ms\n")
+                f.write(f"\nTotal Build Time: {total_ms:.2f} ms\n")
         
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:

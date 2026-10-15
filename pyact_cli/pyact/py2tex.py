@@ -17,7 +17,24 @@ class LatexVisitor(ast.NodeVisitor):
         return 1000
 
     def visit_Name(self, n):
-        return n.id
+        name = n.id
+        if "_" in name:
+            parts = name.split('_', 1)
+            name = f"{parts[0]}_{{{parts[1]}}}"
+            
+        greek_letters = [
+            'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 
+            'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 
+            'upsilon', 'phi', 'chi', 'psi', 'omega',
+            'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 
+            'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 
+            'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega'
+        ]
+        import re
+        greek_pattern = r'(?<![a-zA-Z])(' + '|'.join(greek_letters) + r')(?![a-zA-Z])'
+        name = re.sub(greek_pattern, r'\\\1', name)
+        
+        return name
 
     def prec_Name(self, n):
         return 1000

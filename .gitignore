@@ -1,2 +1,3 @@
 pamd-file-support/node_modules/.bin/acorn.cmd
 node_modules/
+__pycache__

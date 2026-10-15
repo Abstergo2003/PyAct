@@ -45,7 +45,19 @@ You can also include other pamd files as templates!
 <tmp>path/to/another_file</tmp>
 ```
 
-### 3. Compile to Markdown
+### 3. Use Global Variables `<glb>`
+If you have data you want to access everywhere across multiple nested files (like an author name or project ID), simply create a `global.py` file in your root folder:
+
+```python
+def global_context():
+    return {"author": "Jane Doe"}
+```
+You can then inject this data into any Markdown cell using the `<glb>` tag!
+```markdown
+Written by <glb>author</glb>
+```
+
+### 4. Compile to Markdown
 Run the compiler from your terminal to generate your final Markdown document:
 ```bash
 pyact path/to/your_file.pamd -o output.md
