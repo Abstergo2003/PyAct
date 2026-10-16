@@ -423,8 +423,8 @@ def _process_inline(paragraph, text, styles, tag):
                 _add_internal_hyperlink(paragraph, f"[{fn_id}]", f"footnote_{fn_id}")
                 
         else:
-            # Handle plain text + bold/italic
-            subparts = re.split(r'(\*\*.*?\*\*|\*.*?\*)', part)
+            # Handle plain text + bold/italic + inline code
+            subparts = re.split(r'(\*\*.*?\*\*|\*.*?\*|`[^`]+`)', part)
             for subpart in subparts:
                 if not subpart: continue
                 if subpart.startswith('**') and subpart.endswith('**'):
@@ -435,6 +435,13 @@ def _process_inline(paragraph, text, styles, tag):
                     run = paragraph.add_run(subpart[1:-1])
                     run.italic = True
                     if tag in styles: _apply_css_to_run(run, styles[tag])
+                elif subpart.startswith('`') and subpart.endswith('`') and len(subpart) >= 2:
+                    run = paragraph.add_run(subpart[1:-1])
+                    run.font.name = "Consolas"
+                    run.font.size = Pt(9.5)
+                    rPr = run._r.get_or_add_rPr()
+                    rPr.append(parse_xml(f'<w:shd {nsdecls("w")} w:fill="F0F2F5"/>'))
+                    if 'code' in styles: _apply_css_to_run(run, styles['code'])
                 else:
                     run = paragraph.add_run(subpart)
                     if tag in styles: _apply_css_to_run(run, styles[tag])
@@ -964,6 +971,237 @@ def _add_table_of_contents(doc, title="Table of Contents", headings=None, styles
     fld_end.set(qn('w:fldCharType'), 'end')
     r_end._r.append(fld_end)
 
+def _parse_border_component(rules: dict, prefix: str = 'border'):
+    """
+    Parses border component from rules dict (e.g. prefix='border' or 'border-top').
+    Returns (val, sz, color) or None if not specified.
+    """
+    val = None
+    sz = None
+    color = None
+    
+    shorthand = rules.get(prefix, '')
+    if shorthand:
+        for p in shorthand.split():
+            p_low = p.lower()
+            if p_low in ('none', 'hidden'):
+                val = 'none'
+            elif p_low in ('solid', 'dashed', 'dotted', 'double'):
+                val = 'single' if p_low == 'solid' else p_low
+            elif '#' in p:
+                hex_c = p.replace('#', '').strip()
+                if len(hex_c) == 3: hex_c = ''.join([c*2 for c in hex_c])
+                if len(hex_c) == 6: color = hex_c.upper()
+            elif 'pt' in p_low or 'px' in p_low or p_low.isdigit():
+                num = float(re.sub(r'[^\d.]', '', p_low) or '1')
+                sz = str(max(1, int(num * 8)))
+                
+    style_key = f"{prefix}-style" if prefix != 'border' else 'border-style'
+    if style_key in rules:
+        bs = rules[style_key].lower()
+        if bs in ('none', 'hidden'): val = 'none'
+        elif bs == 'solid': val = 'single'
+        elif bs in ('dashed', 'dotted', 'double'): val = bs
+        
+    color_key = f"{prefix}-color" if prefix != 'border' else 'border-color'
+    if color_key in rules:
+        hex_c = rules[color_key].replace('#', '').strip()
+        if len(hex_c) == 3: hex_c = ''.join([c*2 for c in hex_c])
+        if len(hex_c) == 6: color = hex_c.upper()
+        
+    width_key = f"{prefix}-width" if prefix != 'border' else 'border-width'
+    if width_key in rules:
+        num = float(re.sub(r'[^\d.]', '', rules[width_key]) or '1')
+        sz = str(max(1, int(num * 8)))
+        
+    return val, sz, color
+
+def _apply_table_styling(table, table_lines: list, styles: dict):
+    """
+    Applies CSS styling to a python-docx table, including borders, cell padding,
+    header shading, alignments, and Word table properties.
+    """
+    t_styles = styles.get('table', {})
+    th_styles = styles.get('th', styles.get('table_header', {}))
+    td_styles = styles.get('td', styles.get('table_cell', {}))
+    zebra_styles = styles.get('tr:nth-child(even)', styles.get('table_row:nth-child(even)', {}))
+    
+    # 1. Built-in Word table style if specified (e.g. style: "Table Grid")
+    if 'style' in t_styles:
+        s_name = t_styles['style'].strip("'\"")
+        try:
+            table.style = s_name
+        except Exception:
+            pass
+            
+    tblPr = table._tbl.tblPr
+    
+    # 2. Table Width
+    width_val = t_styles.get('width', '100%').strip().lower()
+    if width_val in ('100%', 'full'):
+        tblPr.append(parse_xml(f'<w:tblW {nsdecls("w")} w:w="5000" w:type="pct"/>'))
+    elif width_val == 'auto':
+        tblPr.append(parse_xml(f'<w:tblW {nsdecls("w")} w:w="0" w:type="auto"/>'))
+    else:
+        m = re.search(r'([\d.]+)\s*(in|cm|mm|pt)?', width_val)
+        if m:
+            val, unit = float(m.group(1)), m.group(2)
+            if unit == 'in': dxa = int(val * 1440)
+            elif unit == 'cm': dxa = int(val * 567)
+            elif unit == 'mm': dxa = int(val * 56.7)
+            elif unit == 'pt': dxa = int(val * 20)
+            else: dxa = int(val * 1440)
+            tblPr.append(parse_xml(f'<w:tblW {nsdecls("w")} w:w="{dxa}" w:type="dxa"/>'))
+            
+    # 3. Table Alignment (center, left, right)
+    align_val = t_styles.get('text-align', t_styles.get('align', 'center')).strip().lower()
+    if align_val in ('center', 'left', 'right'):
+        tblPr.append(parse_xml(f'<w:jc {nsdecls("w")} w:val="{align_val}"/>'))
+        
+    # 4. Table Borders
+    def_val = "single"
+    def_sz = "4"  # 0.5 pt
+    def_col = "D0D7DE"
+    
+    b_val, b_sz, b_col = _parse_border_component(t_styles, 'border')
+    if b_val is None: b_val = def_val
+    if b_sz is None: b_sz = def_sz
+    if b_col is None: b_col = def_col
+    
+    sides = {}
+    for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        css_key = f"border-{side.lower()}"
+        s_val, s_sz, s_col = _parse_border_component(t_styles, css_key)
+        sides[side] = {
+            'val': s_val if s_val is not None else b_val,
+            'sz': s_sz if s_sz is not None else b_sz,
+            'color': s_col if s_col is not None else b_col,
+        }
+        
+    border_elements = []
+    for side, cfg in sides.items():
+        if cfg['val'] == 'none':
+            border_elements.append(f'<w:{side} w:val="none"/>')
+        else:
+            border_elements.append(f'<w:{side} w:val="{cfg["val"]}" w:sz="{cfg["sz"]}" w:space="0" w:color="{cfg["color"]}"/>')
+            
+    tblBorders = parse_xml(f'''
+        <w:tblBorders {nsdecls("w")}>
+            {''.join(border_elements)}
+        </w:tblBorders>
+    ''')
+    tblPr.append(tblBorders)
+    
+    # 5. Cell Margins / Padding
+    pad_val = t_styles.get('padding', t_styles.get('cell-padding', '')).strip().lower()
+    top_dxa, bot_dxa, left_dxa, right_dxa = 120, 120, 160, 160
+    if pad_val:
+        nums = [float(n) for n in re.findall(r'[\d.]+', pad_val)]
+        if len(nums) == 1:
+            d = int(nums[0] * 20)
+            top_dxa, bot_dxa, left_dxa, right_dxa = d, d, d, d
+        elif len(nums) >= 2:
+            tb = int(nums[0] * 20)
+            lr = int(nums[1] * 20)
+            top_dxa, bot_dxa, left_dxa, right_dxa = tb, tb, lr, lr
+            
+    tblCellMar = parse_xml(f'''
+        <w:tblCellMar {nsdecls("w")}>
+            <w:top w:w="{top_dxa}" w:type="dxa"/>
+            <w:bottom w:w="{bot_dxa}" w:type="dxa"/>
+            <w:left w:w="{left_dxa}" w:type="dxa"/>
+            <w:right w:w="{right_dxa}" w:type="dxa"/>
+        </w:tblCellMar>
+    ''')
+    tblPr.append(tblCellMar)
+    
+    # 6. Parse Markdown Column Alignments
+    col_aligns = []
+    for line in table_lines:
+        if '---' in line:
+            parts = [c.strip() for c in line.strip('|').split('|')]
+            for p in parts:
+                if p.startswith(':') and p.endswith(':'):
+                    col_aligns.append(WD_ALIGN_PARAGRAPH.CENTER)
+                elif p.endswith(':'):
+                    col_aligns.append(WD_ALIGN_PARAGRAPH.RIGHT)
+                elif p.startswith(':'):
+                    col_aligns.append(WD_ALIGN_PARAGRAPH.LEFT)
+                else:
+                    col_aligns.append(None)
+            break
+
+    # 7. Rows: Repeat header on pages & prevent row splitting
+    if len(table.rows) > 0:
+        table.rows[0]._tr.get_or_add_trPr().append(parse_xml(f'<w:tblHeader {nsdecls("w")}/>'))
+    for row in table.rows:
+        row._tr.get_or_add_trPr().append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+        
+    # 8. Header background color
+    th_bg = th_styles.get('background-color', th_styles.get('background', '')).replace('#', '').strip()
+    if not th_bg and 'background-color' in styles.get('table_header', {}):
+        th_bg = styles['table_header']['background-color'].replace('#', '').strip()
+    if not th_bg:
+        th_bg = 'F2F4F8'
+    if len(th_bg) == 3: th_bg = ''.join([c*2 for c in th_bg])
+    
+    # Apply to Header Row
+    if len(table.rows) > 0:
+        for c_idx, cell in enumerate(table.rows[0].cells):
+            tcPr = cell._tc.get_or_add_tcPr()
+            if len(th_bg) == 6:
+                tcPr.append(parse_xml(f'<w:shd {nsdecls("w")} w:fill="{th_bg.upper()}"/>'))
+            p = cell.paragraphs[0]
+            if c_idx < len(col_aligns) and col_aligns[c_idx] is not None:
+                p.alignment = col_aligns[c_idx]
+            elif 'text-align' in th_styles:
+                ta = th_styles['text-align'].lower()
+                if ta == 'center': p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif ta == 'right': p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                elif ta == 'left': p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            else:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+            for r in p.runs:
+                if 'font-weight' not in th_styles or th_styles['font-weight'].lower() == 'bold':
+                    r.bold = True
+                if 'color' in th_styles:
+                    hc = th_styles['color'].replace('#', '').strip()
+                    if len(hc) == 6:
+                        r.font.color.rgb = RGBColor(int(hc[0:2],16), int(hc[2:4],16), int(hc[4:6],16))
+                if 'font-family' in th_styles:
+                    r.font.name = th_styles['font-family'].strip("'\"")
+                if 'font-size' in th_styles:
+                    sz_num = re.sub(r'[^\d.]', '', th_styles['font-size'])
+                    if sz_num: r.font.size = Pt(float(sz_num))
+
+    # 9. Apply to Body Rows
+    zebra_bg = zebra_styles.get('background-color', zebra_styles.get('background', '')).replace('#', '').strip()
+    if len(zebra_bg) == 3: zebra_bg = ''.join([c*2 for c in zebra_bg])
+    
+    for r_idx in range(1, len(table.rows)):
+        is_even = (r_idx % 2 == 0)
+        row_bg = zebra_bg if (is_even and len(zebra_bg) == 6) else None
+        
+        for c_idx, cell in enumerate(table.rows[r_idx].cells):
+            tcPr = cell._tc.get_or_add_tcPr()
+            if row_bg:
+                tcPr.append(parse_xml(f'<w:shd {nsdecls("w")} w:fill="{row_bg.upper()}"/>'))
+            elif 'background-color' in td_styles:
+                td_bg = td_styles['background-color'].replace('#', '').strip()
+                if len(td_bg) == 3: td_bg = ''.join([c*2 for c in td_bg])
+                if len(td_bg) == 6:
+                    tcPr.append(parse_xml(f'<w:shd {nsdecls("w")} w:fill="{td_bg.upper()}"/>'))
+                    
+            p = cell.paragraphs[0]
+            if c_idx < len(col_aligns) and col_aligns[c_idx] is not None:
+                p.alignment = col_aligns[c_idx]
+            elif 'text-align' in td_styles:
+                ta = td_styles['text-align'].lower()
+                if ta == 'center': p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif ta == 'right': p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                elif ta == 'left': p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
 def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = None):
     """
     Translates parsed markdown blocks into a Word document and applies CSS styling.
@@ -1084,9 +1322,14 @@ def docx_writer(blocks: list, styles: dict, output_file: str, config: dict = Non
                 table = doc.add_table(rows=len(rows), cols=len(rows[0]))
                 for r_idx, row in enumerate(rows):
                     for c_idx, val in enumerate(row):
-                        table.cell(r_idx, c_idx).text = val
-                if 'table' in styles:
-                    pass
+                        cell = table.cell(r_idx, c_idx)
+                        p = cell.paragraphs[0]
+                        p.text = ""
+                        p.paragraph_format.space_before = Pt(0)
+                        p.paragraph_format.space_after = Pt(0)
+                        tag = 'th' if r_idx == 0 else 'td'
+                        _process_inline(p, val, styles, tag)
+                _apply_table_styling(table, table_lines, styles)
 
         elif btype == 'toc':
             toc_seen = True

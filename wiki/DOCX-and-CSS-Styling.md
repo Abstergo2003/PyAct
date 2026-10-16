@@ -23,27 +23,33 @@ By default, the DOCX is styled using standard professional defaults. However, yo
 If a file named `style.css` exists in the exact same directory as your `.pamd` file, PyAct will **automatically load it** and map the CSS properties to Word formatting commands.
 
 ### Supported Selectors
-- `body`: Global defaults.
+- `body`: Global defaults (font-family, font-size, color, line-height, margins).
 - `h1, h2, h3, h4, h5, h6`: Heading specific formatting.
 - `p` or `text`: Standard paragraph text.
-- `equation`: Spacing around OMML math blocks.
-- `image`: Dimensions for downloaded images.
-- `table` / `table_header`: Table borders and header shading.
+- `equation`: Spacing and alignment around math blocks.
+- `image`: Dimensions and alignment for images.
+- `table`: Table width, alignment, padding, and border styles (`border`, `border-style`, `border-color`, `border-width`, or `style: "Table Grid"`).
+- `th` or `table_header`: Header row background shading (`background-color`), font color, weight, and alignment.
+- `td` or `table_cell`: Body cell alignment, background shading, and typography.
+- `tr:nth-child(even)`: Alternating row background shading (zebra striping).
+- `code`: Typography and shading for inline code spans.
 - `hyperlink`: Colors and underlines for links.
-- `list`: Indentation for bullet points.
+- `list`: Indentation and spacing for bullet and numbered lists.
 
 ### Supported Properties
-- `font-family`: e.g., `"Arial"`, `"Calibri"`
-- `font-size`: e.g., `12pt`, `14pt`
-- `color` / `background-color`: e.g., `#FF0000`, `blue`
+- `font-family`: e.g., `"Arial"`, `"Calibri"`, `"Consolas"`
+- `font-size`: e.g., `11pt`, `14pt`
+- `color` / `background-color`: e.g., `#2F5496`, `#F2F4F8`, `blue`
 - `font-weight`: `bold` | `normal`
 - `font-style`: `italic` | `normal`
 - `text-decoration`: `underline` | `none`
-- `text-align`: `left` | `center` | `right` | `justify`
+- `text-align`: `left` | `center` | `right` | `justify` (also supports Markdown column alignments `:---:`, `---:`)
 - `margin-top` / `margin-bottom`: e.g., `12pt`
 - `line-height`: e.g., `1.15`, `1.5`
 - `page-break-before`: `always` | `auto` (Forces a page break before the element)
-- `width` / `height`: e.g., `6in` (Specifically for images/tables)
+- `width` / `height`: e.g., `100%`, `auto`, `6in` (For tables and images)
+- `border` / `border-style` / `border-color` / `border-width`: e.g., `1px solid #D0D7DE`, `dashed`, `none` (For tables)
+- `padding` / `cell-padding`: e.g., `6pt 8pt` (For table cells)
 
 ## 4. Document Settings via `pamd.conf`
 

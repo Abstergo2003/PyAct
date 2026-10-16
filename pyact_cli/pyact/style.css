@@ -55,22 +55,23 @@ image {
 }
 
 table {
-    /* 
-      python-docx table styling is best handled by built-in Word Table Styles.
-    */
     border-style: solid;    /* solid | dashed | dotted | double | none */
+    border-color: #D0D7DE;  /* HEX color e.g., #D0D7DE */
+    border-width: 0.5pt;    /* border thickness e.g., 0.5pt, 1pt, 2pt */
     text-align: center;     /* left | center | right */
     width: 100%;            /* auto | 100% | 5in */
+    padding: 6pt 8pt;       /* cell padding inside table */
 }
 
-table_header {
-    /* 
-      Shading and cell formatting (requires raw XML <w:shd> for background)
-    */
-    background-color: #D3D3D3; /* HEX color e.g., #RRGGBB */
-    color: #000000;
+table_header, th {
+    background-color: #F2F4F8; /* HEX color e.g., #RRGGBB */
+    color: #1F2328;
     font-weight: bold;         /* bold | normal */
     text-align: center;        /* left | center | right | justify */
+}
+
+table_cell, td {
+    text-align: left;          /* default cell alignment */
 }
 
 hyperlink {
