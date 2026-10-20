@@ -1,5 +1,6 @@
 import inspect
 from typing import Callable, List, Any
+from enum import Enum
 from pyact.py2tex import py2tex
 
 def equation(func: Callable, values: List[Any]) -> str:
@@ -17,10 +18,13 @@ def equation(func: Callable, values: List[Any]) -> str:
     Outputs:
         str: A Markdown math string formatted as `$$ Name = Equation = Value $$`.
     """
+    print("Function 'equation()' is deprecated and will be removed, please use Calculation() class.")
     source = inspect.getsource(func)
     value = func(*values)
     name, sep, tail = source.rpartition("=")
+    print(name, tail)
     head, sep, equ = tail.rpartition(":")
+    print(head, equ)
     
     name = name.strip()
     if "_" in name:
@@ -139,6 +143,7 @@ def table(headers: List[str], values: List[List[Any]], caption: str, add_no: boo
     Outputs:
         str: A formatted Markdown string containing the caption and the table.
     """
+    print("Function 'table()' is deprecated and will be removed, please use Table() class.")
     if add_no:
         headers_string = f"|No.|"
         breaker_line = "|---|"
@@ -192,6 +197,7 @@ def unordered_list(items: List[str]) -> str:
     Outputs:
         str: A Markdown string where each item is prefixed with `* `.
     """
+    print("Function 'unordered_list()' is deprecated and will be removed, please use CList() class.")
     list_string = ""
     for i in items:
         list_string += f"* {i}\n"
@@ -210,6 +216,7 @@ def ordered_list(items: List[str]) -> str:
     Outputs:
         str: A Markdown string where each item is numbered sequentially (1. 2. 3.).
     """
+    print("Function 'ordered_list()' is deprecated and will be removed, please use CList() class.")
     list_string = ""
     for i, item in enumerate(items):
         list_string += f"{i+1}. {item}\n"
@@ -228,6 +235,7 @@ def checklist(items: List[str]) -> str:
     Outputs:
         str: A Markdown string where each item is prefixed with `- [ ] `.
     """
+    print("Function 'checklist()' is deprecated and will be removed, please use CList() class.")
     list_string = ""
     for i in items:
         list_string += f"- [ ] {i}\n"
@@ -250,6 +258,9 @@ class Footnote:
         """
         self.number = number
         self.text = text
+
+    def __repr__(self) -> str:
+        return self.define_string()
 
     def define_string(self) -> str:
         """
@@ -282,6 +293,7 @@ def table_to_dxf(headers: List[str], values: List[List[Any]], filename: str, cel
     Outputs:
         str: A string confirming the export, formatted as a Markdown link.
     """
+    print("Function 'table_to_dfx()' is deprecated and will be removed, please use Table() class.")
     try:
         import ezdxf
     except ImportError:
@@ -320,3 +332,229 @@ def table_to_dxf(headers: List[str], values: List[List[Any]], filename: str, cel
             
     doc.saveas(filename)
     return f"*[Successfully exported table to {filename}]({filename})*"
+
+class Calculation:
+    def __init__(self, func: Callable, values: List[float|int], repl: bool = False, precision: int = 3):
+        self.func = func
+        self.values = values
+        self.replace = repl
+        self.precision = precision
+        self.value = round(func(*values), self.precision)
+        self.name = None
+        self.vars = None
+        self.repr = self.get_representation()
+
+    def __repr__(self):
+        return self.repr
+
+    def recalculate(self, values, precision: int = None):
+        if precision is None:
+            return Calculation(self.func, values, self.replace, self.precision)
+        else:
+            return Calculation(self.func, values, self.replace, precision)
+
+    def get_representation(self):
+        source = inspect.getsource(self.func)
+
+        name, sep, tail = source.rpartition("=")
+
+        head, sep, equ = tail.rpartition(":")
+        self.vars = head.replace("lambda", "").replace(" ", "").split(",")
+        
+        name = name.strip()
+        self.name = f"$ {py2tex(name)} $"
+        if "_" in name:
+            parts = name.split("_", 1)
+            name = f"{parts[0]}_{{{parts[1]}}}"
+            
+        import re
+        greek_pattern = r'(?<![a-zA-Z])(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)(?![a-zA-Z])'
+        name = re.sub(greek_pattern, r'\\\1', name)
+        texified = py2tex(equ.replace(chr(10), ''))
+        replaced = texified
+        for i, vr in enumerate(self.vars):
+            replaced = replaced.replace(py2tex(vr.replace(",", "")), f"{self.values[i]}")
+
+        if self.replace:
+            return f"$$ {name} = {texified} = {replaced} = {self.value} $$"
+        else:
+            return f"$$ {name} = {texified} = {self.value} $$"
+
+    def _extract(self, other) -> float:
+        return float(other.value) if isinstance(other, Calculation) else float(other)
+
+    def __add__(self, other):
+        return float(self.value) + self._extract(other)
+
+    def __radd__(self, other):
+        return self._extract(other) + float(self.value)
+
+    def __sub__(self, other):
+        return float(self.value) - self._extract(other)
+
+    def __rsub__(self, other):
+        return self._extract(other) - float(self.value)
+
+    def __mul__(self, other):
+        return float(self.value) * self._extract(other)
+
+    def __rmul__(self, other):
+        return self._extract(other) * float(self.value)
+
+    def __truediv__(self, other):
+        return float(self.value) / self._extract(other)
+
+    def __rtruediv__(self, other):
+        return self._extract(other) / float(self.value)
+
+    def __pow__(self, power):
+        return float(self.value) ** self._extract(power)
+
+    def __neg__(self):
+        return -float(self.value)
+        
+    def __abs__(self):
+        return abs(float(self.value))
+
+class Table():
+    def __init__(self, headers: List[str], values: List[List[Any]], caption: str, add_no: bool = False, starting_number: int = 1):
+        self.headers = headers,
+        self.values = values
+        self.caption = caption
+        self.add_no = add_no
+        self.starting_number = starting_number
+        self.repr = self.get_representation()
+
+    def __repr__(self):
+        return self.repr
+
+    def get_representation(self):
+        if self.add_no:
+            headers_string = f"|No.|"
+            breaker_line = "|---|"
+        else:
+            headers_string = f"|"
+            breaker_line = "|"
+    
+        for i in self.headers:
+            headers_string += f"{i}|"
+            breaker_line += "-"*len(i)+"|"
+    
+        table_content = ""
+        for i, row in enumerate(self.values):
+            if self.add_no:
+                table_content += f"|{i+self.starting_number}|"
+            else:
+                table_content += "|"
+            for value in row:
+                table_content += f"{value}|"
+            table_content += "\n"
+    
+        caption_html = f"<span style='text-align: center; display: block; font-style: italic;'>{self.caption}</span>"
+        return f"{caption_html} \n {headers_string}\n{breaker_line}\n{table_content}"
+
+    def toDXF(self, filename: str, cell_width: float = 50.0, cell_height: float = 10.0):
+        try:
+            import ezdxf
+        except ImportError:
+            return f"*(Error: ezdxf library is not installed. Cannot generate {filename})*"
+            
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+        
+        # Construct full grid data
+        rows = [self.headers] + self.values
+        num_rows = len(rows)
+        num_cols = len(self.headers)
+        
+        # Draw horizontal grid lines
+        for i in range(num_rows + 1):
+            y = -i * cell_height
+            msp.add_line((0, y), (num_cols * cell_width, y))
+            
+        # Draw vertical grid lines
+        for j in range(num_cols + 1):
+            x = j * cell_width
+            msp.add_line((x, 0), (x, -num_rows * cell_height))
+            
+        # Draw text centered in each cell
+        for i, row in enumerate(rows):
+            y = -i * cell_height - (cell_height / 2)
+            for j, cell_val in enumerate(row):
+                if j >= num_cols: continue # Safety bounds
+                x = j * cell_width + (cell_width / 2)
+                msp.add_text(
+                    str(cell_val),
+                    dxfattribs={
+                        'height': cell_height * 0.4,
+                    }
+                ).set_placement((x, y), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+                
+        doc.saveas(filename)
+        return f"*[Successfully exported table to {filename}]({filename})*"
+
+class ListType(Enum):
+    ORDERED = 1
+    UNORDERED = 2
+    CHECKLIST = 3
+
+class CList():
+    def __init__(self, items: List[Any], type: ListType):
+        self.items = items
+        self.type = type
+        self.repr = self.get_representation()
+
+    def __repr__(self):
+        return self.repr
+
+    def get_representation(self):
+        if self.type == ListType.ORDERED:
+            return self.get_ordered()
+        elif self.type == ListType.UNORDERED:
+            return self.get_unordered()
+        elif self.type == ListType.CHECKLIST:
+            return self.get_checklist()
+
+    def get_ordered(self):
+        list_string = ""
+        for i, item in enumerate(self.items):
+            list_string += f"{i+1}. {item}\n"
+        return list_string
+    def get_unordered(self):
+        list_string = ""
+        for i in self.items:
+            list_string += f"* {i}\n"
+        return list_string
+    def get_checklist(self):
+        list_string = ""
+        for i in self.items:
+            list_string += f"- [ ] {i}\n"
+        return list_string
+
+# feat:: footnote list
+# class FootnoteList():
+#     def __init__(self, footnotes: List[Footnote]):
+#         self.footnotes = footnotes
+#         self.repr = self.get_adnotations()
+
+#     def __repr__(self):
+#         return self.repr
+    
+#     def append(self, footnote: Footnote|List[Footnote]):
+#         if isinstance(footnote, List):
+#             self.footnotes = self.footnotes + footnote
+#         else:
+#             self.footnotes = self.footnotes.append(footnote)
+#     def get_adnotations(self):
+#         adnots = ""
+#         for fn in self.footnotes:
+#             adnots = adnots + f"{fn.adnotation}\n"
+
+if __name__ == "__main__":
+    # func_w = lambda x_1, y, z: x_1+y+z
+    # func_eq = Calculation(func_w, [1,2,3], True)
+    # print(func_eq.vars)
+
+
+    
+    print(["lol4", "lol5"][-1])

@@ -30,5 +30,9 @@ For the ultimate Jupyter-like writing experience, install the official PAMD exte
 3. Click Install and enjoy side-by-side editing, syntax highlighting, and a magical "Run" button that instantly compiles and opens a live Markdown preview of your document.
 👉 [Check out the Extension](./pamd-file-support/)
 
+### 3. Technical Sheet (For AI Assistants & Developers)
+Developing features, building integrations, or working with an AI assistant on the codebase? Read the single source of truth detailing the architecture, compilation AST, OOXML engine, and invariants:  
+👉 [Check out the Tech Sheet](./TECH_SHEET.md)
+
 ---
 Get started today by checking out the individual folders above to supercharge your Markdown workflow!
