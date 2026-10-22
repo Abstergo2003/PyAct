@@ -1,9 +1,14 @@
 {
   "name": "pamd-file-support",
   "displayName": "PAMD file support",
-  "description": "",
-  "icon": "file_icon.webp",
-  "version": "1.1.1",
+  "description": "Notebook authoring, compilation, linting, and DOCX export for PyAct .pamd documents.",
+  "icon": "file_icon.png",
+  "version": "1.4.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Abstergo2003/PyAct.git",
+    "directory": "pamd-file-support"
+  },
   "engines": {
     "vscode": "^1.138.0"
   },
@@ -21,9 +26,10 @@
           ".pamd"
         ],
         "icon": {
-          "light": "./file_icon.webp",
-          "dark": "./file_icon.webp"
-        }
+          "light": "./file_icon.png",
+          "dark": "./file_icon.png"
+        },
+        "configuration": "./language-configuration.json"
       }
     ],
     "notebooks": [
@@ -37,21 +43,107 @@
         ]
       }
     ],
+    "grammars": [
+      {
+        "scopeName": "text.pamd.markdown",
+        "path": "./syntaxes/pamd-markdown-injection.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ]
+      }
+    ],
     "commands": [
+      {
+        "command": "pamd.actions",
+        "title": "PyAct",
+        "icon": "$(rocket)"
+      },
       {
         "command": "pamd.generateDocx",
         "title": "Export to Word (.docx)",
         "icon": "$(export)"
+      },
+      {
+        "command": "pamd.compileMarkdown",
+        "title": "Compile to Markdown",
+        "icon": "$(markdown)"
+      },
+      {
+        "command": "pamd.compileNoCache",
+        "title": "Compile to Markdown (No Cache)",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "pamd.lint",
+        "title": "Lint PAMD Project",
+        "icon": "$(check)"
+      },
+      {
+        "command": "pamd.clearCache",
+        "title": "Clear PAMD Cache",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
       "editor/title": [
         {
+          "command": "pamd.compileMarkdown",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        },
+        {
           "command": "pamd.generateDocx",
           "group": "navigation",
           "when": "resourceExtname == .pamd"
+        },
+        {
+          "command": "pamd.lint",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        },
+        {
+          "command": "pamd.clearCache",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        },
+        {
+          "command": "pamd.compileNoCache",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "pamd.actions",
+          "group": "navigation",
+          "when": "notebookType == pamd-notebook && config.pyact.showNotebookToolbar"
         }
       ]
+    },
+    "configuration": {
+      "title": "PyAct",
+      "properties": {
+        "pyact.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python executable used to run the PyAct CLI."
+        },
+        "pyact.autoPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the generated Markdown preview after compilation."
+        },
+        "pyact.outputDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Output directory relative to the .pamd file. Empty uses the source directory."
+        },
+        "pyact.showNotebookToolbar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show PyAct commands in the PAMD notebook toolbar."
+        }
+      }
     }
   },
   "scripts": {

@@ -1,0 +1,26 @@
+{
+  "scopeName": "source.pamd",
+  "name": "PAMD",
+  "patterns": [
+    {
+      "name": "entity.name.tag.pamd",
+      "match": "</?(ctx|glb|tmp|toc|pagebreak|sectionbreak|landscape|pb|sb)\\b[^>]*>"
+    },
+    {
+      "name": "markup.heading.markdown",
+      "match": "^#{1,6}\\s.*$"
+    },
+    {
+      "name": "markup.bold.markdown",
+      "match": "\\*\\*[^*]+\\*\\*"
+    },
+    {
+      "name": "markup.italic.markdown",
+      "match": "(?<!\\*)\\*[^*]+\\*(?!\\*)"
+    },
+    {
+      "name": "markup.inline.raw.markdown",
+      "match": "`[^`]+`"
+    }
+  ]
+}

@@ -17,7 +17,7 @@ def run_linter(main_filename: str, directory: str):
         build_tree = map_content(main_filename, directory)
     except Exception as e:
         print(f"Error mapping project: {e}")
-        return
+        return False
         
     used_files = set()
     
@@ -37,6 +37,7 @@ def run_linter(main_filename: str, directory: str):
                 all_pamd_files.add(os.path.abspath(os.path.join(root, f)))
                 
     unused_files = all_pamd_files - used_files
+    has_errors = False
     if unused_files:
         print(f"[WARNING] Unused .pamd files found in project directory:")
         for uf in unused_files:
@@ -76,6 +77,7 @@ def run_linter(main_filename: str, directory: str):
                 for k in unused_exports:
                     print(f"     - {k}")
             if missing_exports:
+                has_errors = True
                 print(f"  [ERROR] Missing context exports (used in markdown, missing in python):")
                 for k in missing_exports:
                     print(f"     - {k}")
@@ -83,3 +85,4 @@ def run_linter(main_filename: str, directory: str):
             pass
 
     print("\nLinting complete!")
+    return not has_errors

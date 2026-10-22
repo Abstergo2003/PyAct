@@ -1,6 +1,11 @@
 # The `.pamd` Format
 
-A `.pamd` file operates identically to a Jupyter Notebook (`.ipynb`). Under the hood, it is a JSON file containing a list of `cells`. PyAct strictly processes exactly one `code` cell and exactly one `markdown` cell per file.
+A `.pamd` file operates identically to a Jupyter Notebook (`.ipynb`). Under the hood, it is a JSON file containing a list of `cells`. PyAct requires exactly one `markdown` cell per file and permits zero or more `code` cells. Python cells are concatenated in file order before execution, allowing imports, variables, and the `context()` function to be split across cells.
+
+The file must contain valid JSON. Each cell must have `cell_type` set to
+`code` or `markdown`, and `source` must be a string or an array of strings.
+Malformed documents produce a compilation error that identifies the file and
+the invalid part.
 
 ## 1. The Context System `<ctx>`
 
@@ -27,6 +32,26 @@ Written by: <ctx>author</ctx>
 The value of Pi is <ctx>pi</ctx>.
 ```
 
+Context values may also be nested mappings. Use dot notation to address nested
+values:
+
+```python
+def context():
+    return {
+        "project": {
+            "author": "Ada Lovelace"
+        }
+    }
+```
+
+```markdown
+Prepared by <ctx>project.author</ctx>.
+```
+
+Missing context values are reported as compilation errors. An existing value
+such as an empty string is preserved as an empty string and is not treated as
+missing.
+
 ## 2. Component Templates `<tmp>`
 
 For large projects (like a book or an extensive report), putting everything into a single `.pamd` file gets messy. PyAct supports nesting!
@@ -48,6 +73,10 @@ This is the first chapter of the book.
 ```
 
 When you compile `main.pamd`, PyAct recursively parses the AST (Abstract Syntax Tree), resolves all child templates relative to the parent's directory, compiles their individual `context()` dictionaries, and merges them into one flat, cohesive output document!
+
+Template paths are resolved with the platform's native path rules, so nested
+templates work on Windows and POSIX systems. Recursive template references are
+rejected with an error that shows the detected cycle.
 
 ## 3. Global Variables `<glb>`
 
@@ -146,5 +175,3 @@ Wrap wide tables or extensive charts in `<landscape>...</landscape>`:
 </landscape>
 ```
 PyAct automatically creates a dedicated horizontal section in Word, renders the content, and restores standard portrait orientation afterward!
-
-

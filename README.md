@@ -13,6 +13,7 @@ PyAct solves this by introducing `.pamd` files — a powerful format that merges
 - **Native Word Documents (DOCX)**: Compile your Markdown straight into fully formatted Microsoft Word Documents, complete with native tables, footnotes, and math!
 - **Custom CSS Styling**: Use standard CSS syntax (via `style.css`) to customize the fonts, colors, and layout of your exported Word Documents!
 - **Component Templates**: Keep your documents clean by splitting them into smaller `<tmp>` templates.
+- **Validated PAMD Format**: Use one Markdown cell and as many Python cells as needed for modular logic.
 - **Jupyter-like Experience**: A beautifully integrated VS Code extension makes writing `.pamd` feel like writing a Jupyter Notebook.
 
 ## 📦 The Ecosystem

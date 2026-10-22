@@ -1,7 +1,45 @@
 import inspect
+import ast
+import textwrap
 from typing import Callable, List, Any
 from enum import Enum
 from pyact.py2tex import py2tex
+
+
+def _extract_lambda_parts(func: Callable) -> tuple[str, list[str], str]:
+    source = textwrap.dedent(inspect.getsource(func))
+    tree = ast.parse(source)
+    lambda_node = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.Lambda)),
+        None,
+    )
+    if lambda_node is None:
+        raise ValueError("Expected a lambda function.")
+
+    expression = ast.get_source_segment(source, lambda_node.body)
+    if expression is None:
+        raise ValueError("Could not read the lambda expression.")
+
+    name = getattr(func, "__name__", "calculation")
+    assignment = next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) for target in node.targets)
+            and lambda_node in ast.walk(node.value)
+        ),
+        None,
+    )
+    if assignment is not None:
+        name = next(
+            target.id
+            for target in assignment.targets
+            if isinstance(target, ast.Name)
+        )
+
+    variables = [argument.arg for argument in lambda_node.args.args]
+    return name, variables, expression
 
 def equation(func: Callable, values: List[Any]) -> str:
     """
@@ -19,12 +57,8 @@ def equation(func: Callable, values: List[Any]) -> str:
         str: A Markdown math string formatted as `$$ Name = Equation = Value $$`.
     """
     print("Function 'equation()' is deprecated and will be removed, please use Calculation() class.")
-    source = inspect.getsource(func)
     value = func(*values)
-    name, sep, tail = source.rpartition("=")
-    print(name, tail)
-    head, sep, equ = tail.rpartition(":")
-    print(head, equ)
+    name, _, equ = _extract_lambda_parts(func)
     
     name = name.strip()
     if "_" in name:
@@ -354,12 +388,7 @@ class Calculation:
             return Calculation(self.func, values, self.replace, precision)
 
     def get_representation(self):
-        source = inspect.getsource(self.func)
-
-        name, sep, tail = source.rpartition("=")
-
-        head, sep, equ = tail.rpartition(":")
-        self.vars = head.replace("lambda", "").replace(" ", "").split(",")
+        name, self.vars, equ = _extract_lambda_parts(self.func)
         
         name = name.strip()
         self.name = f"$ {py2tex(name)} $"
@@ -418,7 +447,7 @@ class Calculation:
 
 class Table():
     def __init__(self, headers: List[str], values: List[List[Any]], caption: str, add_no: bool = False, starting_number: int = 1):
-        self.headers = headers,
+        self.headers = headers
         self.values = values
         self.caption = caption
         self.add_no = add_no

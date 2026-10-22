@@ -1,17 +1,32 @@
 import argparse
 import sys
-import os
 import time
+import shutil
+from pathlib import Path
 from .core import map_content, process_content, build_logs, generate_markdown_toc
 
-def is_cache_valid(build_tree, cache_mtime, root_dir=None):
-    if root_dir is not None:
-        global_file = os.path.join(root_dir, "global.py")
-        if os.path.exists(global_file) and os.path.getmtime(global_file) > cache_mtime:
+def _cache_dependencies(root_dir: Path) -> list[Path]:
+    dependencies = [
+        root_dir / "global.py",
+        root_dir / "pamd.conf",
+        root_dir / "style.css",
+    ]
+    helper_dir = Path(__file__).parents[1] / "pamd_helpers"
+    if helper_dir.exists():
+        dependencies.extend(helper_dir.glob("*.py"))
+    return dependencies
+
+
+def is_cache_valid(build_tree, cache_mtime, root_dir=None, dependencies=None):
+    root_dir = Path(root_dir) if root_dir is not None else None
+    if dependencies is None and root_dir is not None:
+        dependencies = _cache_dependencies(root_dir)
+    for dependency in dependencies or []:
+        if dependency.exists() and dependency.stat().st_mtime > cache_mtime:
             return False
 
-    file_path = os.path.join(build_tree.get("path", ""), build_tree.get("name", "") + ".pamd")
-    if os.path.exists(file_path) and os.path.getmtime(file_path) > cache_mtime:
+    file_path = Path(build_tree["source_path"])
+    if file_path.exists() and file_path.stat().st_mtime > cache_mtime:
         return False
     for t in build_tree.get("templates", []):
         if not is_cache_valid(t, cache_mtime):
@@ -55,36 +70,47 @@ def main():
     parser.add_argument("--css", help="Optional CSS file path to style the DOCX")
     parser.add_argument("--conf", help="Optional path to pamd.conf configuration file")
     parser.add_argument("--lint", action="store_true", help="Run the linter on the project to check for unused variables and files")
+    parser.add_argument("--no-cache", action="store_true", help="Rebuild the document without reading the cache")
+    parser.add_argument("--clear-cache", action="store_true", help="Remove the project cache before compiling")
     
     args = parser.parse_args()
     
-    input_path = os.path.abspath(args.input)
-    directory = os.path.dirname(input_path)
-    filename = os.path.basename(input_path)
+    input_path = Path(args.input).resolve()
+    directory = input_path.parent
+    filename = input_path.name
     
     if filename.endswith(".pamd"):
         filename = filename[:-5]
         
     if args.lint:
         from .linter import run_linter
-        run_linter(filename, directory)
+        if not run_linter(filename, directory):
+            sys.exit(1)
         return
         
     try:
         build_tree = map_content(filename, directory)
         
-        cache_dir = os.path.join(directory, ".pamd-cache")
-        cache_file = os.path.join(cache_dir, f"{filename}.cache.md")
+        cache_dir = directory / ".pamd-cache"
+        cache_file = cache_dir / f"{filename}.cache.md"
         use_cache = False
+
+        if args.clear_cache and cache_dir.exists():
+            shutil.rmtree(cache_dir)
         
-        if os.path.exists(cache_file):
-            cache_mtime = os.path.getmtime(cache_file)
-            if is_cache_valid(build_tree, cache_mtime, directory):
+        if not args.no_cache and cache_file.exists():
+            cache_mtime = cache_file.stat().st_mtime
+            if is_cache_valid(
+                build_tree,
+                cache_mtime,
+                directory,
+                _cache_dependencies(directory),
+            ):
                 use_cache = True
                 
         if use_cache:
             print("pamd-cache: Using cached markdown...")
-            with open(cache_file, "r", encoding="utf-8") as f:
+            with cache_file.open("r", encoding="utf-8") as f:
                 content = f.read()
         else:
             print("pamd-cache: Cache invalid or missing. Rebuilding...")
@@ -96,14 +122,13 @@ def main():
             total_ms = (total_end - total_start) * 1000
             
             # Write cache
-            if not os.path.exists(cache_dir):
-                os.makedirs(cache_dir)
-            with open(cache_file, "w", encoding="utf-8") as f:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with cache_file.open("w", encoding="utf-8") as f:
                 f.write(content)
                 
             # Write build log
-            log_file = os.path.join(cache_dir, "build.log")
-            with open(log_file, "w", encoding="utf-8") as f:
+            log_file = cache_dir / "build.log"
+            with log_file.open("w", encoding="utf-8") as f:
                 f.write("PyAct Build Log\n")
                 f.write("================\n\n")
                 f.write("File Execution Times:\n")
@@ -113,7 +138,7 @@ def main():
         
         md_output = generate_markdown_toc(content)
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
+            with Path(args.output).open("w", encoding="utf-8") as f:
                 f.write(md_output)
             print(f"Successfully compiled to {args.output}")
         else:
@@ -127,28 +152,28 @@ def main():
                 styles = style_parser(args.css)
             else:
                 # Try to look for style.css in the active directory
-                local_css = os.path.join(directory, "style.css")
-                if os.path.exists(local_css):
+                local_css = directory / "style.css"
+                if local_css.exists():
                     styles = style_parser(local_css)
                 else:
                     # Fallback to the default one packaged in pyact
-                    default_css = os.path.join(os.path.dirname(__file__), "style.css")
+                    default_css = Path(__file__).parent / "style.css"
                     styles = style_parser(default_css)
                     
             # Load pamd.conf configuration
             conf = {}
             conf_path = None
             if args.conf:
-                conf_path = os.path.abspath(args.conf)
+                conf_path = Path(args.conf).resolve()
             else:
-                local_conf = os.path.join(directory, "pamd.conf")
-                cwd_conf = os.path.join(os.getcwd(), "pamd.conf")
-                if os.path.exists(local_conf):
+                local_conf = directory / "pamd.conf"
+                cwd_conf = Path.cwd() / "pamd.conf"
+                if local_conf.exists():
                     conf_path = local_conf
-                elif os.path.exists(cwd_conf):
+                elif cwd_conf.exists():
                     conf_path = cwd_conf
 
-            if conf_path and os.path.exists(conf_path):
+            if conf_path and conf_path.exists():
                 from .conf_parser import conf_parser
                 conf = conf_parser(conf_path)
                     

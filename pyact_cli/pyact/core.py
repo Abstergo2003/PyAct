@@ -1,12 +1,65 @@
 import re
 import json
 import time
-import os
 import linecache
+from pathlib import Path
+from typing import Any, Mapping
 
 build_logs = []
 
-def get_directory(path: str) -> list:
+
+def validate_pamd_document(data: Any, file_path: str | Path) -> list[dict]:
+    """Validate the structural contract of a PAMD notebook document."""
+    path = Path(file_path)
+    if not isinstance(data, dict):
+        raise ValueError(f"Invalid PAMD file {path}: the root must be a JSON object.")
+
+    cells = data.get("cells")
+    if not isinstance(cells, list):
+        raise ValueError(f"Invalid PAMD file {path}: 'cells' must be a JSON array.")
+
+    validated_cells = []
+    markdown_count = 0
+    for index, cell in enumerate(cells):
+        if not isinstance(cell, dict):
+            raise ValueError(
+                f"Invalid PAMD file {path}: cell {index} must be a JSON object."
+            )
+
+        cell_type = cell.get("cell_type")
+        if cell_type not in {"code", "markdown"}:
+            raise ValueError(
+                f"Invalid PAMD file {path}: cell {index} has unsupported "
+                f"cell_type {cell_type!r}; expected 'code' or 'markdown'."
+            )
+
+        source = cell.get("source")
+        if isinstance(source, str):
+            normalized_source = source
+        elif isinstance(source, list) and all(isinstance(line, str) for line in source):
+            normalized_source = "".join(source)
+        else:
+            raise ValueError(
+                f"Invalid PAMD file {path}: cell {index} 'source' must be "
+                "a string or an array of strings."
+            )
+
+        if cell_type == "markdown":
+            markdown_count += 1
+        validated_cells.append(
+            {"cell_type": cell_type, "source": normalized_source}
+        )
+
+    if markdown_count != 1:
+        raise ValueError(
+            f"Invalid PAMD file {path}: expected exactly one markdown cell, "
+            f"found {markdown_count}."
+        )
+
+    return validated_cells
+
+
+def get_directory(path: str | Path) -> list:
     """
     Splits a full file path into its directory component and its filename component.
     
@@ -21,8 +74,8 @@ def get_directory(path: str) -> list:
     Outputs:
         list: A two-element list `[directory_path, filename]`.
     """
-    head, sep, tail = path.rpartition('/')
-    return [head + sep, tail]
+    path = Path(path)
+    return [path.parent, path.name]
 
 def read_pamd_cells(file_path: str):
     """
@@ -39,26 +92,39 @@ def read_pamd_cells(file_path: str):
     Outputs:
         tuple (str, str): A tuple containing `(code_content, markdown_content)`.
     """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    path = Path(file_path)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"Invalid PAMD file {path}: malformed JSON at line "
+            f"{error.lineno}, column {error.colno}: {error.msg}."
+        ) from error
+    except OSError as error:
+        raise OSError(f"Could not read PAMD file {path}: {error}") from error
+
+    cells = validate_pamd_document(data, path)
     
     code_content = ""
     markdown_content = ""
     
-    for cell in data.get("cells", []):
-        cell_type = cell.get("cell_type", "")
-        source = cell.get("source", "")
-        if isinstance(source, list):
-            source = "".join(source)
-            
+    for cell in cells:
+        cell_type = cell["cell_type"]
+        source = cell["source"]
+
         if cell_type == "code":
-            code_content += source + "\n"
+            code_content += source
+            if source and not source.endswith("\n"):
+                code_content += "\n"
         elif cell_type == "markdown":
-            markdown_content += source + "\n"
+            markdown_content += source
+            if source and not source.endswith("\n"):
+                markdown_content += "\n"
             
     return code_content, markdown_content
 
-def get_imports(file: str, code_text: str):
+def get_imports(file: str | Path, code_text: str):
     """
     Executes the Python code from a .pamd file and retrieves the context variables.
     
@@ -75,7 +141,7 @@ def get_imports(file: str, code_text: str):
     Outputs:
         dict: The dictionary of variables returned by the user's `context()` function.
     """
-    filename = f"{file}.pamd"
+    filename = str(Path(file).with_suffix(".pamd"))
     file_namespace = {"__file__": filename}
     if not code_text.strip():
         raise ValueError(f"The file {filename} needs a 'context()' function but has no code cell.")
@@ -108,20 +174,20 @@ def get_imports(file: str, code_text: str):
 
     return result_dict
 
-def get_globals(directory: str):
+def get_globals(directory: str | Path):
     """
     Reads global.py and executes its global_context() function to get global variables.
     """
-    global_path = os.path.join(directory, "global.py")
-    if not os.path.exists(global_path):
+    global_path = Path(directory) / "global.py"
+    if not global_path.exists():
         return {}
         
-    with open(global_path, "r", encoding="utf-8") as f:
+    with global_path.open("r", encoding="utf-8") as f:
         code_text = f.read()
         
-    file_namespace = {"__file__": global_path}
+    file_namespace = {"__file__": str(global_path)}
     try:
-        compiled_code = compile(code_text, global_path, "exec")
+        compiled_code = compile(code_text, str(global_path), "exec")
         exec(compiled_code, file_namespace)
     except Exception as e:
         raise RuntimeError(f"Error executing global.py: {e}")
@@ -178,7 +244,20 @@ def find_templates(text: str):
     pattern = r"<tmp>(.*?)</tmp>"
     return re.findall(pattern, text)
 
-def map_content(file: str, path: str):
+def _template_path(template: str | Path, directory: str | Path) -> Path:
+    template_path = Path(template)
+    if template_path.suffix != ".pamd":
+        template_path = template_path.with_suffix(".pamd")
+    if not template_path.is_absolute():
+        template_path = Path(directory) / template_path
+    return template_path
+
+
+def map_content(
+    file: str | Path,
+    path: str | Path,
+    _active_paths: tuple[Path, ...] = (),
+):
     """
     Recursively maps the dependency tree of a `.pamd` file.
     
@@ -195,31 +274,41 @@ def map_content(file: str, path: str):
         dict: A recursive "build tree" dictionary containing metadata, required imports, 
               and the build trees of all nested templates.
     """
-    if path and not path.endswith('/'):
-        full_path = f"{path}/{file}"
-    elif path.endswith('/'):
-        full_path = f"{path}{file}"
-    else:
-        full_path = file
-        
-    code_text, main_file = read_pamd_cells(f"{full_path}.pamd")
+    source_path = _template_path(file, path).resolve()
+    if source_path in _active_paths:
+        cycle_start = _active_paths.index(source_path)
+        cycle = (*_active_paths[cycle_start:], source_path)
+        cycle_display = " -> ".join(str(item) for item in cycle)
+        raise ValueError(f"Recursive <tmp> template cycle detected: {cycle_display}")
+
+    code_text, main_file = read_pamd_cells(str(source_path))
     templates = find_templates(main_file)
     imports = find_imports(main_file)
     globals_req = find_globals(main_file)
-    meta = get_directory(full_path)
+    meta = get_directory(source_path.with_suffix(""))
     
     ready_t = []
     for i in templates:
-        ready_t.append(map_content(i, meta[0]))
+        ready_t.append(map_content(i, meta[0], (*_active_paths, source_path)))
 
     return {
-        "tag_name": file,
-        "name": meta[1],
+        "tag_name": str(file),
+        "name": str(meta[1]),
         "path": meta[0],
+        "source_path": source_path,
         "imports": imports,
         "globals": globals_req,
         "templates": ready_t
     }
+
+def _resolve_value(values: Mapping[str, Any], key: str) -> Any:
+    current: Any = values
+    for part in key.split("."):
+        if not isinstance(current, Mapping) or part not in current:
+            raise KeyError(key)
+        current = current[part]
+    return current
+
 
 def process_content(build_tree: dict, globals_dict: dict = None):
     """
@@ -230,21 +319,38 @@ def process_content(build_tree: dict, globals_dict: dict = None):
     if globals_dict is None:
         globals_dict = get_globals(build_tree.get("path", ""))
         
-    file_path_base = build_tree.get("path", "") + build_tree.get("name", "")
-    code_text, file_text = read_pamd_cells(file_path_base + ".pamd")
+    source_path = build_tree.get("source_path")
+    if source_path is None:
+        source_path = _template_path(
+            build_tree.get("name", ""),
+            build_tree.get("path", ""),
+        )
+    source_path = Path(source_path)
+    code_text, file_text = read_pamd_cells(str(source_path))
     
     needed_imports = build_tree.get("imports", [])
     if needed_imports:
-        imports = get_imports(file_path_base, code_text)
+        imports = get_imports(source_path, code_text)
         for i in needed_imports:
-            file_text = file_text.replace(f"<ctx>{i}</ctx>", str(imports.get(i, '')))
+            try:
+                value = _resolve_value(imports, i)
+            except KeyError:
+                raise ValueError(
+                    f"Context variable '{i}' requested in {source_path.name} "
+                    "but not returned by context()."
+                ) from None
+            file_text = file_text.replace(f"<ctx>{i}</ctx>", str(value))
             
     needed_globals = build_tree.get("globals", [])
     for g in needed_globals:
-        if g in globals_dict:
-            file_text = file_text.replace(f"<glb>{g}</glb>", str(globals_dict[g]))
-        else:
-            raise ValueError(f"Global variable '{g}' requested via <glb> but not found in global.py's global_context().")
+        try:
+            value = _resolve_value(globals_dict, g)
+        except KeyError:
+            raise ValueError(
+                f"Global variable '{g}' requested via <glb> but not found "
+                "in global.py's global_context()."
+            ) from None
+        file_text = file_text.replace(f"<glb>{g}</glb>", str(value))
 
     for i in build_tree.get("templates", []):
         file_text = file_text.replace(f"<tmp>{i.get('tag_name')}</tmp>", process_content(i, globals_dict))
@@ -253,7 +359,7 @@ def process_content(build_tree: dict, globals_dict: dict = None):
     elapsed_ms = (end_time - start_time) * 1000
     
     build_logs.append({
-        "file": f"{build_tree.get('name', '')}.pamd",
+        "file": source_path.name,
         "time_ms": elapsed_ms
     })
         

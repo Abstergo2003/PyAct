@@ -70,7 +70,12 @@ A `.pamd` file is stored on disk as strict JSON containing an array of cells (an
     {
       "cell_type": "code",
       "source": [
-        "import pamd_helpers\n",
+        "import pamd_helpers\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
         "def context():\n",
         "    return {\"beam\": \"IPE 300\", \"length\": 6.0}\n"
       ]
@@ -88,6 +93,8 @@ A `.pamd` file is stored on disk as strict JSON containing an array of cells (an
 
 ### The `context()` Contract
 - Every `.pamd` file containing `<ctx>` variables **must** define a top-level callable named `context()`.
+- Every `.pamd` file must contain exactly one Markdown cell.
+- A `.pamd` file may contain zero or more Python cells. All Python cells are concatenated in file order and executed as one script.
 - `context()` must take 0 arguments and return a `dict` mapping string keys to stringable or helper-generated values.
 - In `core.py`, dynamic execution mocks Python's `linecache.cache[filename]` before calling `compile()` and `exec()`. This ensures that tools relying on source inspection (e.g. `inspect.getsource()` used by `pamd_helpers.equation`) succeed inside dynamic execution.
 

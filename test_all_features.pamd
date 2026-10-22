@@ -85,6 +85,8 @@
         "Project: **<glb>project_code</glb>** | Organization: **<glb>organization</glb>** | Engine Version: **<glb>system_version</glb>**  \n",
         "Author: **<ctx>author</ctx>** | Date: *<ctx>date</ctx>*\n",
         "\n",
+        "<ctx>author</ctx>\n",
+        "\n",
         "<toc/>\n",
         "\n",
         "<pagebreak/>\n",

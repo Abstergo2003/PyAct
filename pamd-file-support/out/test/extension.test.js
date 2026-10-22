@@ -34,15 +34,56 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
+const util_1 = require("util");
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 const vscode = __importStar(require("vscode"));
-// import * as myExtension from '../../extension';
+const extension_1 = require("../extension");
 suite('Extension Test Suite', () => {
-    vscode.window.showInformationMessage('Start all tests.');
-    test('Sample test', () => {
-        assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-        assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+    test('builds a non-shell PyAct command', () => {
+        const command = (0, extension_1.createPyActCommand)('python-custom', ['document.pamd', '--no-cache'], 'C:\\project');
+        assert.strictEqual(command.command, 'python-custom');
+        assert.deepStrictEqual(command.args, ['-m', 'pyact.cli', 'document.pamd', '--no-cache']);
+        assert.strictEqual(command.cwd, 'C:\\project');
+    });
+    test('serializes and deserializes one markdown with multiple code cells', async () => {
+        const serializer = new extension_1.PamdNotebookSerializer();
+        const data = await serializer.deserializeNotebook(new util_1.TextEncoder().encode(JSON.stringify({
+            cells: [
+                { cell_type: 'code', source: ['x = 1\n'] },
+                { cell_type: 'code', source: ['def context():\n', '    return {"x": x}\n'] },
+                { cell_type: 'markdown', source: ['Value: <ctx>x</ctx>\n'] }
+            ]
+        })), new vscode.CancellationTokenSource().token);
+        assert.strictEqual(data.cells.length, 3);
+        assert.strictEqual(data.cells[1].value, 'def context():\n    return {"x": x}\n');
+        assert.strictEqual(data.cells[2].languageId, 'markdown');
+    });
+    test('rejects PAMD documents without exactly one markdown cell', async () => {
+        const serializer = new extension_1.PamdNotebookSerializer();
+        await assert.rejects(serializer.deserializeNotebook(new util_1.TextEncoder().encode(JSON.stringify({
+            cells: [{ cell_type: 'code', source: 'x = 1\n' }]
+        })), new vscode.CancellationTokenSource().token), /expected exactly one markdown cell/);
+    });
+    test('extracts context keys for completion suggestions', () => {
+        const keys = (0, extension_1.extractContextKeys)(`
+def context():
+    return {
+        "project": {"author": "Ada"},
+        "empty": "",
+    }
+`);
+        assert.deepStrictEqual(keys, ['empty', 'project', 'project.author']);
+    });
+    test('only offers completion inside an open ctx tag', () => {
+        assert.strictEqual((0, extension_1.contextCompletionPrefix)('Value: <ctx>pro', 15), 'pro');
+        assert.strictEqual((0, extension_1.contextCompletionPrefix)('Value: <ctx>project</ctx>', 25), undefined);
+        assert.strictEqual((0, extension_1.contextCompletionPrefix)('Value: project', 14), undefined);
+    });
+    test('detects when an opening ctx tag needs its closing tag', () => {
+        assert.strictEqual((0, extension_1.shouldCloseContextTag)('<ctx>', 5), true);
+        assert.strictEqual((0, extension_1.shouldCloseContextTag)('<ctx></ctx>', 5), false);
+        assert.strictEqual((0, extension_1.shouldCloseContextTag)('Value: <ctx>pro', 15), false);
     });
 });
 //# sourceMappingURL=extension.test.js.map

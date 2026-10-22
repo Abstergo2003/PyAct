@@ -6,7 +6,7 @@ The PyAct Compiler is invoked from the command line using the `pyact` command (o
 
 ```bash
 # Compile a document
-pyact [-h] [-o OUTPUT] [--docx DOCX_PATH] [--css CSS_PATH] [--conf CONF_PATH] input
+pyact [-h] [-o OUTPUT] [--docx DOCX_PATH] [--css CSS_PATH] [--conf CONF_PATH] [--no-cache] [--clear-cache] input
 
 # Initialize a new project
 pyact init [PROJECT_NAME] [--template default|engineering|academic]
@@ -50,11 +50,19 @@ Templates available:
 - `--lint`
   Runs the PyAct Linter on your project. This tool scans the `.pamd` files in your directory, tracks down nested dependencies, and reports any defined context variables that were never used, as well as dangling `.pamd` files that are never imported.
 
+- `--no-cache`
+  Forces a rebuild without reading the cached Markdown. The rebuilt result is
+  still written to the cache.
+
+- `--clear-cache`
+  Removes the project's `.pamd-cache` directory before compiling, then performs
+  a normal rebuild.
+
 ## Automatic Caching (pamd-cache)
 
 PyAct features a completely automatic, AST-aware caching system. 
 
-When you compile a `.pamd` document, PyAct saves the compiled Markdown into a hidden `.pamd-cache` directory. On subsequent builds, the engine recursively checks the "last modified" timestamps of the main file **and all its nested `<tmp>` templates**. If nothing has changed, PyAct completely bypasses the Python execution engine and instantly loads the cache, resulting in lightning-fast document generation. 
+When you compile a `.pamd` document, PyAct saves the compiled Markdown into a hidden `.pamd-cache` directory. On subsequent builds, the engine recursively checks the "last modified" timestamps of the main file, `global.py`, all nested `<tmp>` templates, `pamd.conf`, `style.css`, and the packaged helper modules. If nothing has changed, PyAct completely bypasses the Python execution engine and instantly loads the cache, resulting in lightning-fast document generation.
 
 ## Example Pipeline
 

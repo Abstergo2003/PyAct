@@ -14,7 +14,8 @@ pip install pyact-cli
 
 ## 📖 How it works
 
-A `.pamd` file is split into a **Python cell** and a **Markdown cell**. 
+A `.pamd` file contains exactly one **Markdown cell** and may contain multiple
+**Python cells**. Python cells are concatenated in order before execution.
 
 ### 1. Write your Python logic
 Define a `context()` function that returns the variables you want to inject. You can even use the built-in `pamd_helpers` to do heavy lifting!
@@ -61,6 +62,14 @@ Written by <glb>author</glb>
 Run the compiler from your terminal to generate your final Markdown document:
 ```bash
 pyact path/to/your_file.pamd -o output.md
+```
+
+Use `--no-cache` to force a rebuild without reading cached Markdown, or
+`--clear-cache` to remove the project's `.pamd-cache` directory before building:
+
+```bash
+pyact path/to/your_file.pamd --no-cache
+pyact path/to/your_file.pamd --clear-cache
 ```
 
 ### 5. Compile to Word (DOCX)
