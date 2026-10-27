@@ -14,7 +14,11 @@ PyAct uses a custom file format called `.pamd`. A `.pamd` file is essentially a 
 1. **A Markdown Cell** (where you write your text).
 2. **A Python Cell** (where you define your dynamic variables).
 
-*(Note: If you use the **PAMD File Support** extension for VS Code, creating a new `.pamd` file automatically generates this structure for you!)*
+If you use the **PAMD File Support** extension for VS Code, opening a `.pamd`
+file launches the custom Monaco-based cell editor. It keeps the Markdown and
+Python cells synchronized with the JSON document and provides compile, lint,
+DOCX, cache, completion, and syntax-highlighting features. See
+[PAMD VS Code Editor](./PAMD-VS-Code-Editor.md) for customization details.
 
 ### The Python Cell
 In the Python cell, you must define a `context()` function that returns a dictionary. These are the variables you want to inject into your Markdown.

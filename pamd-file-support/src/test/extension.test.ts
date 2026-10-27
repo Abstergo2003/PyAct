@@ -1,14 +1,8 @@
 import * as assert from 'assert';
-import { TextEncoder } from 'util';
-
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
-import * as vscode from 'vscode';
 import {
 	contextCompletionPrefix,
 	createPyActCommand,
 	extractContextKeys,
-	PamdNotebookSerializer,
 	shouldCloseContextTag
 } from '../extension';
 
@@ -19,38 +13,6 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(command.command, 'python-custom');
 		assert.deepStrictEqual(command.args, ['-m', 'pyact.cli', 'document.pamd', '--no-cache']);
 		assert.strictEqual(command.cwd, 'C:\\project');
-	});
-
-	test('serializes and deserializes one markdown with multiple code cells', async () => {
-		const serializer = new PamdNotebookSerializer();
-		const data = await serializer.deserializeNotebook(
-			new TextEncoder().encode(JSON.stringify({
-				cells: [
-					{ cell_type: 'code', source: ['x = 1\n'] },
-					{ cell_type: 'code', source: ['def context():\n', '    return {"x": x}\n'] },
-					{ cell_type: 'markdown', source: ['Value: <ctx>x</ctx>\n'] }
-				]
-			})),
-			new vscode.CancellationTokenSource().token
-		);
-
-		assert.strictEqual(data.cells.length, 3);
-		assert.strictEqual(data.cells[1].value, 'def context():\n    return {"x": x}\n');
-		assert.strictEqual(data.cells[2].languageId, 'markdown');
-	});
-
-	test('rejects PAMD documents without exactly one markdown cell', async () => {
-		const serializer = new PamdNotebookSerializer();
-
-		await assert.rejects(
-			serializer.deserializeNotebook(
-				new TextEncoder().encode(JSON.stringify({
-					cells: [{ cell_type: 'code', source: 'x = 1\n' }]
-				})),
-				new vscode.CancellationTokenSource().token
-			),
-			/expected exactly one markdown cell/
-		);
 	});
 
 	test('extracts context keys for completion suggestions', () => {

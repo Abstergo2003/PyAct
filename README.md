@@ -14,7 +14,7 @@ PyAct solves this by introducing `.pamd` files — a powerful format that merges
 - **Custom CSS Styling**: Use standard CSS syntax (via `style.css`) to customize the fonts, colors, and layout of your exported Word Documents!
 - **Component Templates**: Keep your documents clean by splitting them into smaller `<tmp>` templates.
 - **Validated PAMD Format**: Use one Markdown cell and as many Python cells as needed for modular logic.
-- **Jupyter-like Experience**: A beautifully integrated VS Code extension makes writing `.pamd` feel like writing a Jupyter Notebook.
+- **Jupyter-like Experience**: A custom Monaco-based VS Code editor makes writing `.pamd` feel like a focused Jupyter-style document editor without native notebook controls.
 
 ## 📦 The Ecosystem
 
@@ -25,11 +25,14 @@ Available on PyPI, the CLI is the brain of PyAct. It compiles your `.pamd` files
 👉 [Check out the CLI](./pyact_cli/)
 
 ### 2. Install the VS Code Extension
-For the ultimate Jupyter-like writing experience, install the official PAMD extension directly from the VS Code Marketplace! 
+For the ultimate Jupyter-like writing experience, install the official PAMD extension directly from the VS Code Marketplace!
 1. Open VS Code
 2. Search for **PAMD** in the Extensions tab
-3. Click Install and enjoy side-by-side editing, syntax highlighting, and a magical "Run" button that instantly compiles and opens a live Markdown preview of your document.
+3. Click Install and enjoy cell-based editing, Monaco syntax highlighting, completions, automatic context tags, and toolbar actions that compile and preview your document.
 👉 [Check out the Extension](./pamd-file-support/)
+
+The extension's editor behavior and syntax color remapping are documented in
+[PAMD VS Code Editor](./wiki/PAMD-VS-Code-Editor.md).
 
 ### 3. Technical Sheet (For AI Assistants & Developers)
 Developing features, building integrations, or working with an AI assistant on the codebase? Read the single source of truth detailing the architecture, compilation AST, OOXML engine, and invariants:  

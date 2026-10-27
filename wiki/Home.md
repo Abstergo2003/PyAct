@@ -16,3 +16,6 @@ PyAct is a lightweight but extremely powerful compiler that allows you to write 
   - Compiling directly to Microsoft Word `.docx` and using `style.css` to format fonts, margins, and layouts natively.
 - [5. CLI Reference](./CLI-Reference.md)
   - Command line arguments, advanced usage, and pipeline integration.
+- [6. PAMD VS Code Editor](./PAMD-VS-Code-Editor.md)
+  - Custom Monaco editor behavior, toolbar actions, syntax highlighting, and
+    theme color remapping.

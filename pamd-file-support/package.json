@@ -1,9 +1,9 @@
 {
   "name": "pamd-file-support",
   "displayName": "PAMD file support",
-  "description": "Notebook authoring, compilation, linting, and DOCX export for PyAct .pamd documents.",
+  "description": "Custom editing, compilation, linting, and DOCX export for PyAct .pamd documents.",
   "icon": "file_icon.png",
-  "version": "1.4.2",
+  "version": "2.2.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/Abstergo2003/PyAct.git",
@@ -32,10 +32,11 @@
         "configuration": "./language-configuration.json"
       }
     ],
-    "notebooks": [
+    "customEditors": [
       {
-        "type": "pamd-notebook",
-        "displayName": "PAMD Notebook",
+        "viewType": "pamd-editor",
+        "displayName": "PAMD Editor",
+        "priority": "default",
         "selector": [
           {
             "filenamePattern": "*.pamd"
@@ -87,6 +88,11 @@
     "menus": {
       "editor/title": [
         {
+          "command": "pamd.actions",
+          "group": "navigation",
+          "when": "resourceExtname == .pamd"
+        },
+        {
           "command": "pamd.compileMarkdown",
           "group": "navigation",
           "when": "resourceExtname == .pamd"
@@ -111,13 +117,6 @@
           "group": "navigation",
           "when": "resourceExtname == .pamd"
         }
-      ],
-      "notebook/toolbar": [
-        {
-          "command": "pamd.actions",
-          "group": "navigation",
-          "when": "notebookType == pamd-notebook && config.pyact.showNotebookToolbar"
-        }
       ]
     },
     "configuration": {
@@ -138,10 +137,10 @@
           "default": "",
           "description": "Output directory relative to the .pamd file. Empty uses the source directory."
         },
-        "pyact.showNotebookToolbar": {
+        "pyact.showToolbar": {
           "type": "boolean",
           "default": true,
-          "description": "Show PyAct commands in the PAMD notebook toolbar."
+          "description": "Show the PyAct toolbar inside the custom PAMD editor."
         }
       }
     }
@@ -155,14 +154,17 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.138.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
-    "typescript-eslint": "^8.61.1",
+    "@types/vscode": "^1.138.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
+    "typescript-eslint": "^8.61.1"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.57.0"
   },
   "overrides": {
     "diff": "^8.0.4",

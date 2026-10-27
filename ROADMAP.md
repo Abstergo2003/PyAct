@@ -24,6 +24,8 @@ authoring quality before adding more output formats.
 - [x] Add VS Code commands for Markdown compilation, DOCX export, linting, and cache management.
 - [x] Add syntax highlighting for `<ctx>`, `<glb>`, `<tmp>`, and document-control tags.
 - [x] Support configurable Python interpreters and virtual environments in the VS Code extension.
+- [x] Replace the native VS Code notebook surface with a controlled custom PAMD editor.
+- [x] Provide a dedicated PyAct toolbar without native notebook execution controls.
 - [ ] Improve project scaffolding and template customization.
 
 ## v1.4 - Shared Rendering Architecture
@@ -60,6 +62,4 @@ authoring quality before adding more output formats.
 
 ## Recommended Priority
 
-The highest - value next investment is a shared document model backed by a broad
-regression suite. Together they reduce rendering regressions and provide a
-clean foundation for HTML, PDF, and other future output formats.
+The highest - value next investment is a shared document model backed by a broad regression suite. Together they reduce rendering regressions and provide a clean foundation for HTML, PDF, and other future output formats.

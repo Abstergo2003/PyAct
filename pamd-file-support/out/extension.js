@@ -33,29 +33,31 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PamdNotebookSerializer = void 0;
+exports.PamdCustomEditorProvider = void 0;
 exports.extractContextKeys = extractContextKeys;
 exports.contextCompletionPrefix = contextCompletionPrefix;
 exports.shouldCloseContextTag = shouldCloseContextTag;
 exports.createPyActCommand = createPyActCommand;
 exports.activate = activate;
 exports.deactivate = deactivate;
+const pamdEditorHtml_1 = require("./pamdEditorHtml");
 const vscode = __importStar(require("vscode"));
 const child_process_1 = require("child_process");
 const fs_1 = require("fs");
 const path = __importStar(require("path"));
-const util_1 = require("util");
+const diagnosticCollection = vscode.languages.createDiagnosticCollection('pamd');
+let activePamdUri;
 function extractContextKeys(code) {
     const contextStart = code.search(/\bdef\s+context\s*\([^)]*\)\s*:/);
     if (contextStart < 0) {
         return [];
     }
     const body = code.slice(contextStart).replace(/^\s*def\s+\w+\s*\([^)]*\)\s*:/m, '');
-    const keys = new Set();
     const returnObject = body.match(/\breturn\s*{/);
     if (!returnObject || returnObject.index === undefined) {
         return [];
     }
+    const keys = new Set();
     const parseObject = (openBrace, prefix) => {
         let depth = 1;
         let index = openBrace + 1;
@@ -120,38 +122,26 @@ function contextCompletionPrefix(text, offset) {
     return /^[\w.]*$/.test(prefix) ? prefix : undefined;
 }
 function shouldCloseContextTag(text, offset) {
-    return text.slice(Math.max(0, offset - '<ctx>'.length), offset) === '<ctx>'
+    return text.slice(Math.max(0, offset - 5), offset) === '<ctx>'
         && !text.slice(offset).startsWith('</ctx>');
 }
-const diagnosticCollection = vscode.languages.createDiagnosticCollection('pamd');
-function defaultNotebook() {
+function defaultPamd() {
     return {
         cells: [
-            {
-                cell_type: 'markdown',
-                source: ['# Document Title\n', '\n', 'Write your markdown here...\n']
-            },
+            { cell_type: 'markdown', source: '# Document Title\n\nWrite your markdown here...\n' },
             {
                 cell_type: 'code',
-                source: [
-                    'import pamd_helpers\n',
-                    '\n',
-                    'def context():\n',
-                    '    return {\n',
-                    '        \n',
-                    '    }\n'
-                ]
+                source: 'import pamd_helpers\n\ndef context():\n    return {\n        \n    }\n'
             }
         ]
     };
 }
-function normalizeNotebook(raw, uri) {
-    if (!raw || typeof raw !== 'object' || !Array.isArray(raw.cells)) {
+function normalizePamd(value, uri) {
+    if (!value || typeof value !== 'object' || !Array.isArray(value.cells)) {
         throw new Error(`Invalid PAMD file: ${uri.fsPath} must contain a cells array.`);
     }
-    const cells = raw.cells;
     let markdownCount = 0;
-    const normalized = cells.map((cell, index) => {
+    const cells = value.cells.map((cell, index) => {
         if (!cell || !['code', 'markdown'].includes(cell.cell_type)) {
             throw new Error(`Invalid PAMD file: cell ${index} must be code or markdown.`);
         }
@@ -170,37 +160,333 @@ function normalizeNotebook(raw, uri) {
     if (markdownCount !== 1) {
         throw new Error(`Invalid PAMD file: expected exactly one markdown cell, found ${markdownCount}.`);
     }
-    return { cells: normalized };
+    return { cells };
 }
-class PamdNotebookSerializer {
-    async deserializeNotebook(content, _token) {
-        const contents = new util_1.TextDecoder().decode(content);
-        const raw = contents.trim() ? normalizeNotebook(JSON.parse(contents), vscode.Uri.parse('pamd')) : defaultNotebook();
-        const cells = raw.cells.map(item => {
-            const source = typeof item.source === 'string' ? item.source : item.source.join('');
-            return new vscode.NotebookCellData(item.cell_type === 'code' ? vscode.NotebookCellKind.Code : vscode.NotebookCellKind.Markup, source, item.cell_type === 'code' ? 'python' : 'markdown');
+function parsePamd(text, uri) {
+    return text.trim() ? normalizePamd(JSON.parse(text), uri) : defaultPamd();
+}
+function serializePamd(pamd) {
+    return JSON.stringify({
+        cells: pamd.cells.map(cell => ({
+            cell_type: cell.cell_type,
+            source: String(cell.source).split(/(?<=\n)/g)
+        }))
+    }, null, 2);
+}
+// Monaco (Monarch) token name -> candidate TextMate scopes, most specific first.
+// The first candidate that the theme actually colours is used.
+const PAMD_TOKEN_SCOPES = {
+    'keyword': ['keyword.control.flow.python', 'keyword.control', 'keyword'],
+    'constant': ['constant.language.python', 'constant.language', 'constant'],
+    'variable': ['variable.other.readwrite.python', 'variable', 'meta.definition.variable.name', 'support.variable', 'entity.name.variable'],
+    'variable.language': ['variable.language.special.self.python', 'variable.language', 'variable.parameter'],
+    'function': ['entity.name.function.python', 'entity.name.function', 'support.function'],
+    'class-name': ['entity.name.type.class.python', 'entity.name.class', 'entity.name.type', 'support.class'],
+    'annotation': ['entity.name.function.decorator.python', 'meta.function.decorator', 'entity.name.function'],
+    'namespace': ['entity.name.namespace.python', 'entity.name.namespace', 'entity.name.type.module', 'entity.name.type'],
+    'import-name': ['variable.other.readwrite.python', 'variable', 'entity.name.variable'],
+    'number': ['constant.numeric.python', 'constant.numeric', 'constant'],
+    'string': ['string.quoted.double.python', 'string.quoted', 'string'],
+    'string.escape': ['constant.character.escape.python', 'constant.character.escape', 'constant.character'],
+    'operator': ['keyword.operator.python', 'keyword.operator'],
+    'delimiter': ['punctuation.separator.python', 'punctuation'],
+    'comment': ['comment.line.number-sign.python', 'comment.line', 'comment'],
+    'markdown-heading': ['markup.heading.markdown', 'markup.heading'],
+    'markdown-quote': ['markup.quote.markdown', 'markup.quote'],
+    'markdown-list': ['markup.list.unnumbered.markdown', 'markup.list.numbered.markdown', 'markup.list'],
+    'markdown-code-fence': ['markup.fenced_code.block.markdown', 'markup.fenced_code'],
+    'markdown-code': ['markup.inline.raw.markdown', 'markup.raw'],
+    'markdown-bold': ['markup.bold.markdown', 'markup.bold'],
+    'markdown-italic': ['markup.italic.markdown', 'markup.italic'],
+    'markdown-link': ['string.other.link.title.markdown', 'markup.underline.link.markdown', 'markup.underline.link'],
+    'markdown-entity': ['constant.character.entity.html', 'constant.character.entity'],
+    'pamd-tag': ['entity.name.tag.pamd', 'punctuation.definition.tag.pamd', 'entity.name.tag'],
+    'pamd-tag-content': ['entity.name.tag.pamd.content', 'string.unquoted.pamd', 'entity.name.tag'],
+    'pamd-control': ['entity.name.tag.pamd', 'entity.name.tag']
+};
+function stripJsonComments(text) {
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
+        if (inString) {
+            out += c;
+            if (c === '\\') {
+                out += next ?? '';
+                i++;
+            }
+            else if (c === '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (c === '"') {
+            inString = true;
+            out += c;
+        }
+        else if (c === '/' && next === '/') {
+            while (i < text.length && text[i] !== '\n') {
+                i++;
+            }
+            out += '\n';
+        }
+        else if (c === '/' && next === '*') {
+            i += 2;
+            while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+                i++;
+            }
+            i++;
+        }
+        else {
+            out += c;
+        }
+    }
+    return out.replace(/,(\s*[}\]])/g, '$1');
+}
+function toTokenRule(entry) {
+    const raw = entry?.scope;
+    const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+    const scopes = list
+        .filter((s) => typeof s === 'string')
+        .map(s => s.trim())
+        .filter(s => s && !/\s/.test(s));
+    if (!scopes.length) {
+        return undefined;
+    }
+    const settings = entry.settings ?? {};
+    return {
+        scopes,
+        foreground: typeof settings.foreground === 'string' ? settings.foreground : undefined,
+        fontStyle: typeof settings.fontStyle === 'string' ? settings.fontStyle : undefined
+    };
+}
+async function readThemeRules(file, depth = 0) {
+    if (depth > 5) {
+        return [];
+    }
+    const json = JSON.parse(stripJsonComments(await fs_1.promises.readFile(file, 'utf8')));
+    const rules = [];
+    if (typeof json.include === 'string') {
+        rules.push(...await readThemeRules(path.resolve(path.dirname(file), json.include), depth + 1));
+    }
+    if (Array.isArray(json.tokenColors)) {
+        for (const entry of json.tokenColors) {
+            const rule = toTokenRule(entry);
+            if (rule) {
+                rules.push(rule);
+            }
+        }
+    }
+    return rules;
+}
+function activeThemeLabel() {
+    const workbench = vscode.workspace.getConfiguration('workbench');
+    if (workbench.get('autoDetectColorScheme')) {
+        const kind = vscode.window.activeColorTheme.kind;
+        const key = kind === vscode.ColorThemeKind.Light ? 'preferredLightColorTheme'
+            : kind === vscode.ColorThemeKind.HighContrast ? 'preferredHighContrastColorTheme'
+                : kind === vscode.ColorThemeKind.HighContrastLight ? 'preferredHighContrastLightColorTheme'
+                    : 'preferredDarkColorTheme';
+        const preferred = workbench.get(key);
+        if (preferred) {
+            return preferred;
+        }
+    }
+    return workbench.get('colorTheme');
+}
+function findThemeFile(label) {
+    for (const extension of vscode.extensions.all) {
+        const themes = extension.packageJSON?.contributes?.themes ?? [];
+        const match = themes.find(theme => theme.label === label || theme.id === label);
+        if (match && typeof match.path === 'string') {
+            return path.join(extension.extensionPath, match.path);
+        }
+    }
+    return undefined;
+}
+function customizationRules(label) {
+    const config = vscode.workspace.getConfiguration('editor').get('tokenColorCustomizations') ?? {};
+    const layers = [config];
+    if (label) {
+        for (const [key, value] of Object.entries(config)) {
+            if (key.startsWith('[') && key.includes(`[${label}]`) && value && typeof value === 'object') {
+                layers.push(value);
+            }
+        }
+    }
+    const simple = {
+        comments: 'comment',
+        strings: 'string',
+        keywords: 'keyword',
+        numbers: 'constant.numeric',
+        types: 'entity.name.type',
+        functions: 'entity.name.function',
+        variables: 'variable'
+    };
+    const rules = [];
+    for (const layer of layers) {
+        for (const [name, scope] of Object.entries(simple)) {
+            const value = layer[name];
+            if (typeof value === 'string') {
+                rules.push({ scopes: [scope], foreground: value });
+            }
+            else if (value && typeof value === 'object') {
+                rules.push({ scopes: [scope], foreground: value.foreground, fontStyle: value.fontStyle });
+            }
+        }
+        if (Array.isArray(layer.textMateRules)) {
+            for (const entry of layer.textMateRules) {
+                const rule = toTokenRule(entry);
+                if (rule) {
+                    rules.push(rule);
+                }
+            }
+        }
+    }
+    return rules;
+}
+function resolveScope(rules, scope) {
+    let foreground;
+    let fontStyle;
+    for (const rule of rules) {
+        for (const candidate of rule.scopes) {
+            if (scope !== candidate && !scope.startsWith(candidate + '.')) {
+                continue;
+            }
+            // Longer (more specific) scope wins; on a tie the later rule wins.
+            if (rule.foreground !== undefined && (!foreground || candidate.length >= foreground.length)) {
+                foreground = { length: candidate.length, value: rule.foreground };
+            }
+            if (rule.fontStyle !== undefined && (!fontStyle || candidate.length >= fontStyle.length)) {
+                fontStyle = { length: candidate.length, value: rule.fontStyle };
+            }
+        }
+    }
+    return { foreground: foreground?.value, fontStyle: fontStyle?.value };
+}
+async function resolveTokenPalette() {
+    const label = activeThemeLabel();
+    let rules = [];
+    try {
+        const file = label ? findThemeFile(label) : undefined;
+        if (file) {
+            rules = await readThemeRules(file);
+        }
+    }
+    catch {
+        rules = [];
+    }
+    rules.push(...customizationRules(label));
+    console.log(`[PAMD] colour theme "${label}": ${rules.length} token rules resolved`);
+    if (!rules.length) {
+        return undefined;
+    }
+    const palette = {};
+    for (const [token, scopes] of Object.entries(PAMD_TOKEN_SCOPES)) {
+        let entry = {};
+        for (const scope of scopes) {
+            const resolved = resolveScope(rules, scope);
+            if (resolved.foreground) {
+                entry = resolved;
+                break;
+            }
+        }
+        palette[token] = entry;
+    }
+    return palette;
+}
+class PamdCustomEditorProvider {
+    extensionPath;
+    constructor(extensionPath) {
+        this.extensionPath = extensionPath;
+    }
+    async resolveCustomTextEditor(document, webviewPanel, _token) {
+        activePamdUri = document.uri;
+        webviewPanel.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [vscode.Uri.joinPath(vscode.Uri.file(this.extensionPath), 'node_modules', 'monaco-editor', 'min')]
+        };
+        const update = () => {
+            try {
+                webviewPanel.webview.postMessage({ type: 'load', pamd: parsePamd(document.getText(), document.uri) });
+            }
+            catch (error) {
+                webviewPanel.webview.postMessage({
+                    type: 'error',
+                    message: error instanceof Error ? error.message : String(error)
+                });
+            }
+        };
+        let ignoreNextDocumentChange = false;
+        const sendTheme = async () => {
+            try {
+                await webviewPanel.webview.postMessage({ type: 'tokenColors', palette: await resolveTokenPalette() });
+            }
+            catch {
+                // panel was disposed while the theme was being resolved
+            }
+        };
+        const themeSubscriptions = [
+            vscode.window.onDidChangeActiveColorTheme(() => void sendTheme()),
+            vscode.workspace.onDidChangeConfiguration(event => {
+                if (event.affectsConfiguration('workbench') || event.affectsConfiguration('editor.tokenColorCustomizations')) {
+                    void sendTheme();
+                }
+            })
+        ];
+        webviewPanel.onDidDispose(() => themeSubscriptions.forEach(subscription => subscription.dispose()));
+        webviewPanel.webview.html = (0, pamdEditorHtml_1.getMonacoHtml)(webviewPanel.webview, JSON.stringify(parsePamd(document.getText(), document.uri)).replace(/</g, '\\u003c'), vscode.workspace.getConfiguration('pyact').get('showToolbar', true), this.extensionPath);
+        webviewPanel.onDidChangeViewState(() => {
+            if (webviewPanel.active) {
+                activePamdUri = document.uri;
+            }
         });
-        return new vscode.NotebookData(cells);
-    }
-    async serializeNotebook(data, _token) {
-        const cells = data.cells.map(cell => ({
-            cell_type: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
-            source: cell.value.split(/(?<=\n)/g)
-        }));
-        return new util_1.TextEncoder().encode(JSON.stringify({ cells }, null, 2));
+        webviewPanel.onDidDispose(() => {
+            if (activePamdUri?.toString() === document.uri.toString()) {
+                activePamdUri = undefined;
+            }
+        });
+        webviewPanel.webview.onDidReceiveMessage(async (message) => {
+            if (message.type === 'ready') {
+                await sendTheme();
+                return;
+            }
+            if (message.type === 'update' && typeof message.text === 'string') {
+                ignoreNextDocumentChange = document.getText() !== message.text;
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), message.text);
+                const applied = await vscode.workspace.applyEdit(edit);
+                if (!applied) {
+                    ignoreNextDocumentChange = false;
+                }
+                return;
+            }
+            if (message.type === 'action' && typeof message.action === 'string') {
+                await vscode.commands.executeCommand(`pamd.${message.action}`, document.uri);
+            }
+        });
+        const changeSubscription = vscode.workspace.onDidChangeTextDocument(event => {
+            if (event.document.uri.toString() !== document.uri.toString()) {
+                return;
+            }
+            if (ignoreNextDocumentChange) {
+                ignoreNextDocumentChange = false;
+                return;
+            }
+            update();
+        });
+        webviewPanel.onDidDispose(() => changeSubscription.dispose());
+        update();
     }
 }
-exports.PamdNotebookSerializer = PamdNotebookSerializer;
+exports.PamdCustomEditorProvider = PamdCustomEditorProvider;
 function createPyActCommand(pythonPath, args, cwd) {
     return { command: pythonPath, args: ['-m', 'pyact.cli', ...args], cwd };
 }
 function runCommand(command) {
     return new Promise((resolve, reject) => {
-        const child = (0, child_process_1.spawn)(command.command, command.args, {
-            cwd: command.cwd,
-            shell: false,
-            windowsHide: true
-        });
+        const child = (0, child_process_1.spawn)(command.command, command.args, { cwd: command.cwd, shell: false, windowsHide: true });
         let stdout = '';
         let stderr = '';
         child.stdout.on('data', data => stdout += data.toString());
@@ -210,11 +496,7 @@ function runCommand(command) {
     });
 }
 function currentPamdUri(uri) {
-    if (uri?.fsPath.endsWith('.pamd')) {
-        return uri;
-    }
-    const editor = vscode.window.activeNotebookEditor;
-    return editor?.notebook.notebookType === 'pamd-notebook' ? editor.notebook.uri : undefined;
+    return uri?.fsPath.endsWith('.pamd') ? uri : activePamdUri;
 }
 function outputPath(pamdPath, extension) {
     const configured = vscode.workspace.getConfiguration('pyact').get('outputDirectory', '');
@@ -241,25 +523,17 @@ function updateDiagnostics(uri, result) {
     });
     diagnosticCollection.set(uri, diagnostics);
 }
-async function saveNotebook(uri) {
-    const editor = vscode.window.activeNotebookEditor;
-    if (editor?.notebook.uri.toString() === uri.toString() && editor.notebook.isDirty) {
-        await editor.notebook.save();
-    }
-}
 async function compile(uri, docx, noCache = false) {
-    await saveNotebook(uri);
-    const pamdPath = uri.fsPath;
-    const markdownPath = outputPath(pamdPath, 'md');
-    await fs_1.promises.mkdir(path.dirname(markdownPath), { recursive: true });
-    const args = [pamdPath, '-o', markdownPath];
+    const document = await vscode.workspace.openTextDocument(uri);
+    await document.save();
+    const args = [uri.fsPath, '-o', outputPath(uri.fsPath, 'md')];
     if (docx) {
-        args.push('--docx', outputPath(pamdPath, 'docx'));
+        args.push('--docx', outputPath(uri.fsPath, 'docx'));
     }
     if (noCache) {
         args.push('--no-cache');
     }
-    const result = await runCommand(createPyActCommand(pythonPath(), args, projectCwd(pamdPath)));
+    const result = await runCommand(createPyActCommand(pythonPath(), args, projectCwd(uri.fsPath)));
     updateDiagnostics(uri, result);
     return result;
 }
@@ -268,19 +542,18 @@ async function showCompileResult(uri, result, preview) {
         vscode.window.showErrorMessage(`PyAct compilation failed: ${result.stderr || result.stdout}`);
         return;
     }
-    const mdPath = outputPath(uri.fsPath, 'md');
     vscode.window.showInformationMessage(`PyAct compiled ${path.basename(uri.fsPath)}.`);
     if (preview && vscode.workspace.getConfiguration('pyact').get('autoPreview', true)) {
-        await vscode.commands.executeCommand('markdown.showPreviewToSide', vscode.Uri.file(mdPath));
+        await vscode.commands.executeCommand('markdown.showPreviewToSide', vscode.Uri.file(outputPath(uri.fsPath, 'md')));
     }
 }
-async function runCompileCommand(uri, docx) {
+async function runCompileCommand(uri, docx, noCache = false) {
     const pamdUri = currentPamdUri(uri);
     if (!pamdUri) {
         vscode.window.showErrorMessage('No active PAMD file found.');
         return;
     }
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: docx ? 'Exporting PAMD to DOCX' : 'Compiling PAMD' }, async () => showCompileResult(pamdUri, await compile(pamdUri, docx, false), !docx));
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: docx ? 'Exporting PAMD to DOCX' : 'Compiling PAMD' }, async () => showCompileResult(pamdUri, await compile(pamdUri, docx, noCache), !docx));
 }
 async function runLint(uri) {
     const pamdUri = currentPamdUri(uri);
@@ -324,81 +597,18 @@ async function showPyActActions(uri) {
 }
 function activate(context) {
     context.subscriptions.push(diagnosticCollection);
-    context.subscriptions.push(vscode.workspace.registerNotebookSerializer('pamd-notebook', new PamdNotebookSerializer(), {
-        transientOutputs: true
-    }));
-    context.subscriptions.push(vscode.languages.registerCompletionItemProvider({ language: 'markdown', notebookType: 'pamd-notebook' }, {
-        provideCompletionItems(document, position) {
-            const prefix = contextCompletionPrefix(document.getText(), document.offsetAt(position));
-            if (prefix === undefined) {
-                return undefined;
-            }
-            const notebook = vscode.workspace.notebookDocuments.find(candidate => candidate.getCells().some(cell => cell.document.uri.toString() === document.uri.toString()));
-            if (!notebook) {
-                return undefined;
-            }
-            const code = notebook.getCells()
-                .filter(cell => cell.kind === vscode.NotebookCellKind.Code)
-                .map(cell => cell.document.getText())
-                .join('\n');
-            const wordStart = position.translate(0, -prefix.length);
-            const range = new vscode.Range(wordStart, position);
-            return extractContextKeys(code).map(key => {
-                const item = new vscode.CompletionItem(key, vscode.CompletionItemKind.Variable);
-                item.range = range;
-                item.insertText = key;
-                return item;
-            });
-        }
-    }, '<', '.', ...Array.from('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_')));
-    let closingTagEditInProgress = false;
-    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async (event) => {
-        if (closingTagEditInProgress || event.document.languageId !== 'markdown') {
-            return;
-        }
-        for (const change of event.contentChanges) {
-            const insertionEnd = change.rangeOffset + change.text.length;
-            if (shouldCloseContextTag(event.document.getText(), insertionEnd)) {
-                const closingOffset = insertionEnd;
-                closingTagEditInProgress = true;
-                try {
-                    const edit = new vscode.WorkspaceEdit();
-                    edit.insert(event.document.uri, event.document.positionAt(closingOffset), '</ctx>');
-                    await vscode.workspace.applyEdit(edit);
-                    const editor = vscode.window.activeTextEditor;
-                    if (editor?.document.uri.toString() === event.document.uri.toString()) {
-                        const cursor = event.document.positionAt(closingOffset);
-                        editor.selection = new vscode.Selection(cursor, cursor);
-                    }
-                }
-                finally {
-                    closingTagEditInProgress = false;
-                }
-            }
-            if (contextCompletionPrefix(event.document.getText(), insertionEnd) !== undefined) {
-                setTimeout(() => {
-                    void vscode.commands.executeCommand('editor.action.triggerSuggest');
-                }, 0);
-            }
-        }
-    }));
-    context.subscriptions.push(vscode.commands.registerCommand('pamd.actions', (uri) => showPyActActions(uri)), vscode.commands.registerCommand('pamd.compileMarkdown', (uri) => runCompileCommand(uri, false)), vscode.commands.registerCommand('pamd.generateDocx', (uri) => runCompileCommand(uri, true)), vscode.commands.registerCommand('pamd.lint', (uri) => runLint(uri)), vscode.commands.registerCommand('pamd.clearCache', (uri) => clearCache(uri)), vscode.commands.registerCommand('pamd.compileNoCache', async (uri) => {
-        const pamdUri = currentPamdUri(uri);
-        if (pamdUri) {
-            await showCompileResult(pamdUri, await compile(pamdUri, false, true), true);
-        }
-    }));
-    context.subscriptions.push(vscode.window.onDidChangeActiveNotebookEditor(async (editor) => {
-        if (editor?.notebook.notebookType !== 'pamd-notebook') {
-            return;
-        }
-        const markdownCell = editor.notebook.getCells().findIndex(cell => cell.kind === vscode.NotebookCellKind.Markup);
-        if (markdownCell >= 0) {
-            editor.selections = [new vscode.NotebookRange(markdownCell, markdownCell + 1)];
-        }
-    }));
+    context.subscriptions.push(vscode.window.registerCustomEditorProvider('pamd-editor', new PamdCustomEditorProvider(context.extensionPath), { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: false }));
+    context.subscriptions.push(vscode.commands.registerCommand('pamd.actions', (uri) => showPyActActions(uri)), vscode.commands.registerCommand('pamd.compileMarkdown', (uri) => runCompileCommand(uri, false)), vscode.commands.registerCommand('pamd.compileNoCache', (uri) => runCompileCommand(uri, false, true)), vscode.commands.registerCommand('pamd.generateDocx', (uri) => runCompileCommand(uri, true)), vscode.commands.registerCommand('pamd.lint', (uri) => runLint(uri)), vscode.commands.registerCommand('pamd.clearCache', (uri) => clearCache(uri)));
 }
 function deactivate() {
     diagnosticCollection.dispose();
+}
+function getNonce() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 32; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
 }
 //# sourceMappingURL=extension.js.map
