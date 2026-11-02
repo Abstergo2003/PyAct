@@ -1,14 +1,19 @@
 import os
-from .core import read_pamd_cells, get_imports, find_imports, map_content
+from .core import (
+    find_globals,
+    find_imports,
+    find_templates,
+    get_globals,
+    get_imports,
+    map_content,
+    read_pamd_cells,
+)
 
 def run_linter(main_filename: str, directory: str):
     """
     Runs the linter on a PyAct project.
     
-    Checks for:
-    1. Unused .pamd files in the directory.
-    2. Context keys exported but not used in the markdown.
-    3. Context tags requested in the markdown but missing from the context dictionary.
+    Checks for unused and missing context values, globals, and templates.
     """
     print(f"--- PyAct Linter ---")
     print(f"Analyzing project starting from: {main_filename}.pamd\n")
@@ -16,7 +21,7 @@ def run_linter(main_filename: str, directory: str):
     try:
         build_tree = map_content(main_filename, directory)
     except Exception as e:
-        print(f"Error mapping project: {e}")
+        print(f"[ERROR] Could not map {main_filename}.pamd: {e}")
         return False
         
     used_files = set()
@@ -39,20 +44,37 @@ def run_linter(main_filename: str, directory: str):
     unused_files = all_pamd_files - used_files
     has_errors = False
     if unused_files:
-        print(f"[WARNING] Unused .pamd files found in project directory:")
+        print("[WARNING] Unused .pamd files found in project directory:")
         for uf in unused_files:
             print(f"   - {os.path.relpath(uf, directory)}")
     else:
         print("[OK] No unused .pamd files found.")
         
-    print("\n--- Context Check ---")
+    try:
+        global_values = get_globals(directory)
+    except Exception as error:
+        print(f"[ERROR] {error}")
+        global_values = {}
+        has_errors = True
+
+    requested_global_keys = set()
+    for used_file in used_files:
+        try:
+            _, markdown = read_pamd_cells(used_file)
+            requested_global_keys.update(find_globals(markdown))
+        except Exception:
+            continue
+
+    print("\n--- Context and Global Check ---")
     
     # Check context in each used file
     for used_file in used_files:
         rel_path = os.path.relpath(used_file, directory)
         try:
             code_text, md_text = read_pamd_cells(used_file)
-        except Exception:
+        except Exception as error:
+            print(f"\n[ERROR] {rel_path}: {error}")
+            has_errors = True
             continue
             
         try:
@@ -60,10 +82,10 @@ def run_linter(main_filename: str, directory: str):
             base_name = os.path.splitext(os.path.basename(used_file))[0]
             context_dict = get_imports(base_name, code_text)
             exported_keys = set(context_dict.keys())
-        except Exception:
-            # If a file has no code cell or no context(), it returns an empty dict effectively, 
-            # or throws ValueError in get_imports. Let's just treat as empty if error.
+        except Exception as error:
+            print(f"\n[ERROR] {rel_path}: {error}")
             exported_keys = set()
+            has_errors = True
             
         requested_keys = set(find_imports(md_text))
         
@@ -81,8 +103,23 @@ def run_linter(main_filename: str, directory: str):
                 print(f"  [ERROR] Missing context exports (used in markdown, missing in python):")
                 for k in missing_exports:
                     print(f"     - {k}")
-        else:
-            pass
+
+    unused_globals = set(global_values.keys()) - requested_global_keys
+    missing_globals = requested_global_keys - set(global_values.keys())
+    if unused_globals or missing_globals:
+        print("\n--- Global Check ---")
+        if unused_globals:
+            print("[WARNING] Unused global exports:")
+            for key in sorted(unused_globals):
+                print(f"   - {key}")
+        if missing_globals:
+            has_errors = True
+            print("[ERROR] Missing global exports:")
+            for key in sorted(missing_globals):
+                print(f"   - {key}")
+
+    print("\n--- Template Check ---")
+    print("[OK] Template references resolved during project mapping.")
 
     print("\nLinting complete!")
     return not has_errors

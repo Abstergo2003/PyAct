@@ -18,15 +18,15 @@ authoring quality before adding more output formats.
 
 ## v1.3 - Authoring Experience
 
-- [ ] Add richer CLI diagnostics with file, cell, and source-location information.
-- [ ] Improve linting for unused and missing context values, templates, and globals.
+- [x] Add richer CLI diagnostics with file, cell, and source-location information.
+- [x] Improve linting for unused and missing context values, templates, and globals.
 - [x] Add VS Code diagnostics for compilation and lint errors.
 - [x] Add VS Code commands for Markdown compilation, DOCX export, linting, and cache management.
 - [x] Add syntax highlighting for `<ctx>`, `<glb>`, `<tmp>`, and document-control tags.
 - [x] Support configurable Python interpreters and virtual environments in the VS Code extension.
 - [x] Replace the native VS Code notebook surface with a controlled custom PAMD editor.
 - [x] Provide a dedicated PyAct toolbar without native notebook execution controls.
-- [ ] Improve project scaffolding and template customization.
+- [x] Improve project scaffolding and template customization.
 
 ## v1.4 - Shared Rendering Architecture
 

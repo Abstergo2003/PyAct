@@ -396,6 +396,25 @@ async function resolveTokenPalette() {
     }
     return palette;
 }
+function customTokenPalette() {
+    const configured = vscode.workspace.getConfiguration('pyact').get('editorTheme') ?? {};
+    const palette = {};
+    for (const [token, value] of Object.entries(configured)) {
+        if (typeof value === 'string') {
+            palette[token] = { foreground: value };
+        }
+        else if (value && typeof value === 'object') {
+            const entry = value;
+            if (typeof entry.foreground === 'string' || typeof entry.fontStyle === 'string') {
+                palette[token] = {
+                    foreground: typeof entry.foreground === 'string' ? entry.foreground : undefined,
+                    fontStyle: typeof entry.fontStyle === 'string' ? entry.fontStyle : undefined
+                };
+            }
+        }
+    }
+    return palette;
+}
 class PamdCustomEditorProvider {
     extensionPath;
     constructor(extensionPath) {
@@ -419,9 +438,21 @@ class PamdCustomEditorProvider {
             }
         };
         let ignoreNextDocumentChange = false;
+        let themeRequest = 0;
         const sendTheme = async () => {
+            const request = ++themeRequest;
             try {
-                await webviewPanel.webview.postMessage({ type: 'tokenColors', palette: await resolveTokenPalette() });
+                const palette = await resolveTokenPalette();
+                if (request !== themeRequest || webviewPanel.visible === false) {
+                    return;
+                }
+                if (palette) {
+                    await webviewPanel.webview.postMessage({
+                        type: 'tokenColors',
+                        palette,
+                        customPalette: customTokenPalette()
+                    });
+                }
             }
             catch {
                 // panel was disposed while the theme was being resolved
@@ -430,7 +461,9 @@ class PamdCustomEditorProvider {
         const themeSubscriptions = [
             vscode.window.onDidChangeActiveColorTheme(() => void sendTheme()),
             vscode.workspace.onDidChangeConfiguration(event => {
-                if (event.affectsConfiguration('workbench') || event.affectsConfiguration('editor.tokenColorCustomizations')) {
+                if (event.affectsConfiguration('workbench')
+                    || event.affectsConfiguration('editor.tokenColorCustomizations')
+                    || event.affectsConfiguration('pyact.editorTheme')) {
                     void sendTheme();
                 }
             })
@@ -585,6 +618,7 @@ async function clearCache(uri) {
 }
 async function showPyActActions(uri) {
     const action = await vscode.window.showQuickPick([
+        { label: '$(symbol-color)  Configure Editor Theme', command: 'pamd.configureEditorTheme' },
         { label: '$(markdown)  Compile Markdown', command: 'pamd.compileMarkdown' },
         { label: '$(sync)  Compile Markdown (No Cache)', command: 'pamd.compileNoCache' },
         { label: '$(export)  Export to Word (.docx)', command: 'pamd.generateDocx' },
@@ -595,10 +629,13 @@ async function showPyActActions(uri) {
         await vscode.commands.executeCommand(action.command, uri);
     }
 }
+async function configureEditorTheme() {
+    await vscode.commands.executeCommand('workbench.action.openSettings', '@id:pyact.editorTheme');
+}
 function activate(context) {
     context.subscriptions.push(diagnosticCollection);
     context.subscriptions.push(vscode.window.registerCustomEditorProvider('pamd-editor', new PamdCustomEditorProvider(context.extensionPath), { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: false }));
-    context.subscriptions.push(vscode.commands.registerCommand('pamd.actions', (uri) => showPyActActions(uri)), vscode.commands.registerCommand('pamd.compileMarkdown', (uri) => runCompileCommand(uri, false)), vscode.commands.registerCommand('pamd.compileNoCache', (uri) => runCompileCommand(uri, false, true)), vscode.commands.registerCommand('pamd.generateDocx', (uri) => runCompileCommand(uri, true)), vscode.commands.registerCommand('pamd.lint', (uri) => runLint(uri)), vscode.commands.registerCommand('pamd.clearCache', (uri) => clearCache(uri)));
+    context.subscriptions.push(vscode.commands.registerCommand('pamd.actions', (uri) => showPyActActions(uri)), vscode.commands.registerCommand('pamd.compileMarkdown', (uri) => runCompileCommand(uri, false)), vscode.commands.registerCommand('pamd.compileNoCache', (uri) => runCompileCommand(uri, false, true)), vscode.commands.registerCommand('pamd.generateDocx', (uri) => runCompileCommand(uri, true)), vscode.commands.registerCommand('pamd.lint', (uri) => runLint(uri)), vscode.commands.registerCommand('pamd.clearCache', (uri) => clearCache(uri)), vscode.commands.registerCommand('pamd.configureEditorTheme', () => configureEditorTheme()));
 }
 function deactivate() {
     diagnosticCollection.dispose();

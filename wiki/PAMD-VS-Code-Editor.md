@@ -76,6 +76,63 @@ npm run compile
 Reload the VS Code window and reopen the `.pamd` file to load the rebuilt
 webview.
 
+### User-configurable editor theme
+
+Use the Command Palette command **`PyAct: Configure PAMD Editor Theme`**.
+It opens the `pyact.editorTheme` setting, whose values override the built-in
+Monaco palette without requiring a source change.
+
+The complete token list is:
+
+```text
+keyword              constant              variable
+variable.language    function              class-name
+annotation           namespace             import-name
+number               string                string.escape
+operator              delimiter             comment
+markdown-heading     markdown-quote        markdown-list
+markdown-code-fence  markdown-code         markdown-bold
+markdown-italic      markdown-link         markdown-entity
+pamd-tag              pamd-tag-content      pamd-control
+```
+
+Example settings:
+
+```json
+"pyact.editorTheme": {
+  "string": "#CE9178",
+  "string.escape": "#D7BA7D",
+  "class-name": "#4EC9B0",
+  "function": "#DCDCAA",
+  "variable": "#9CDCFE",
+  "variable.language": "#569CD6",
+  "import-name": "#9CDCFE",
+  "namespace": "#4EC9B0",
+  "keyword": "#C586C0",
+  "constant": "#569CD6",
+  "number": "#B5CEA8",
+  "operator": "#D4D4D4",
+  "delimiter": "#D4D4D4",
+  "comment": "#6A9955",
+  "markdown-heading": "#569CD6",
+  "markdown-quote": "#6A9955",
+  "markdown-list": "#C586C0",
+  "markdown-code-fence": "#DCDCAA",
+  "markdown-code": "#CE9178",
+  "markdown-bold": "#DCDCAA",
+  "markdown-italic": "#DCDCAA",
+  "markdown-link": "#4FC1FF",
+  "markdown-entity": "#B5CEA8",
+  "pamd-tag": "#4FC1FF",
+  "pamd-tag-content": "#DCDCAA",
+  "pamd-control": "#C586C0"
+}
+```
+
+Values may be hex colors or objects such as
+`{ "foreground": "#4EC9B0", "fontStyle": "bold" }`. User settings take
+precedence over the built-in dark/light palettes.
+
 ## Implementation structure
 
 - `src/extension.ts` handles VS Code activation, custom-editor lifecycle,

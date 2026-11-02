@@ -105,4 +105,19 @@ pyact init my_project --template engineering
 ```
 Templates: `default`, `engineering`, `academic`.
 
+The initializer creates `main.pamd`, `global.py`, `pamd.conf`, `style.css`, and
+`.gitignore`. Existing files are preserved, so it is safe to rerun the command
+after customizing a project.
+
+### 8. Linting and Diagnostics
+Run the linter without compiling output:
+```bash
+pyact main.pamd --lint
+```
+
+Linting resolves template dependencies, reports unused `.pamd` files, checks
+unused or missing `<ctx>` and `<glb>` values, and returns a non-zero exit code
+for errors. Compilation errors include the source file plus code-cell line and
+column information where available.
+
 That's it! You now have documents ready to be shared, published, or distributed.

@@ -48,7 +48,10 @@ Templates available:
   *(Note: If omitted, the CLI automatically looks for `pamd.conf` in the `.pamd` file directory, or the current working directory.)*
 
 - `--lint`
-  Runs the PyAct Linter on your project. This tool scans the `.pamd` files in your directory, tracks down nested dependencies, and reports any defined context variables that were never used, as well as dangling `.pamd` files that are never imported.
+  Runs the PyAct Linter on your project and exits with status `1` when an error is
+  found. It resolves nested `<tmp>` references, reports unused `.pamd` files,
+  checks unused and missing `<ctx>` values, and checks unused and missing
+  `<glb>` values from `global.py`.
 
 - `--no-cache`
   Forces a rebuild without reading the cached Markdown. The rebuilt result is
@@ -57,6 +60,18 @@ Templates available:
 - `--clear-cache`
   Removes the project's `.pamd-cache` directory before compiling, then performs
   a normal rebuild.
+
+## Diagnostics
+
+Compilation failures include the source `.pamd` file and, when the failure comes
+from executable content, the code-cell line and column. For example:
+
+```text
+Error: broken.pamd [code cell, line 1, column 12]: invalid syntax
+```
+
+Malformed JSON and invalid cell structures identify the file and the specific
+validation problem before execution starts.
 
 ## Automatic Caching (pamd-cache)
 

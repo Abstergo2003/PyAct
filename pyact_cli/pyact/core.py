@@ -2,10 +2,36 @@ import re
 import json
 import time
 import linecache
+import traceback
 from pathlib import Path
 from typing import Any, Mapping
 
 build_logs = []
+
+
+def _source_location(text: str, needle: str) -> tuple[int, int]:
+    offset = text.find(needle)
+    if offset < 0:
+        return 1, 1
+    line = text.count("\n", 0, offset) + 1
+    line_start = text.rfind("\n", 0, offset) + 1
+    return line, offset - line_start + 1
+
+
+def _execution_error(filename: str, error: Exception) -> str:
+    if isinstance(error, SyntaxError):
+        line = error.lineno or 1
+        column = error.offset or 1
+        return (
+            f"{filename} [code cell, line {line}, column {column}]: "
+            f"{error.msg}"
+        )
+    location = ""
+    frames = traceback.extract_tb(error.__traceback__)
+    if frames:
+        frame = frames[-1]
+        location = f" [code cell, line {frame.lineno}, column 1]"
+    return f"{filename}{location}: {error}"
 
 
 def validate_pamd_document(data: Any, file_path: str | Path) -> list[dict]:
@@ -157,20 +183,26 @@ def get_imports(file: str | Path, code_text: str):
         compiled_code = compile(code_text, filename, "exec")
         exec(compiled_code, file_namespace)
     except Exception as e:
-        raise RuntimeError(f"Error executing code in {filename}: {e}")
+        raise RuntimeError(f"Error executing code in {_execution_error(filename, e)}") from e
 
     if "context" not in file_namespace:
-        raise ValueError(f"The file {file}.pamd is missing the required 'context()' function.")
+        raise ValueError(
+            f"The file {file}.pamd [code cell] is missing the required 'context()' function."
+        )
 
     context_func = file_namespace["context"]
 
     if not callable(context_func):
-        raise TypeError(f"In {file}.pamd, 'context' was found but it is not a function!")
+        raise TypeError(
+            f"In {file}.pamd [code cell], 'context' was found but it is not a function!"
+        )
 
     result_dict = context_func()
 
     if not isinstance(result_dict, dict):
-        raise TypeError(f"The 'context()' function in {file}.pamd must return a dictionary.")
+        raise TypeError(
+            f"The 'context()' function in {file}.pamd [code cell] must return a dictionary."
+        )
 
     return result_dict
 
@@ -335,8 +367,10 @@ def process_content(build_tree: dict, globals_dict: dict = None):
             try:
                 value = _resolve_value(imports, i)
             except KeyError:
+                line, column = _source_location(file_text, f"<ctx>{i}</ctx>")
                 raise ValueError(
                     f"Context variable '{i}' requested in {source_path.name} "
+                    f"[markdown cell, line {line}, column {column}] "
                     "but not returned by context()."
                 ) from None
             file_text = file_text.replace(f"<ctx>{i}</ctx>", str(value))
@@ -346,8 +380,10 @@ def process_content(build_tree: dict, globals_dict: dict = None):
         try:
             value = _resolve_value(globals_dict, g)
         except KeyError:
+            line, column = _source_location(file_text, f"<glb>{g}</glb>")
             raise ValueError(
-                f"Global variable '{g}' requested via <glb> but not found "
+                f"Global variable '{g}' requested via <glb> in {source_path.name} "
+                f"[markdown cell, line {line}, column {column}] but not found "
                 "in global.py's global_context()."
             ) from None
         file_text = file_text.replace(f"<glb>{g}</glb>", str(value))

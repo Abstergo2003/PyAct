@@ -165,6 +165,8 @@ interface PaletteEntry {
 	fontStyle?: string;
 }
 
+type CustomTokenPalette = Record<string, PaletteEntry>;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>;
 
@@ -256,6 +258,7 @@ async function readThemeRules(file: string, depth = 0): Promise<TokenRule[]> {
 	if (typeof json.include === 'string') {
 		rules.push(...await readThemeRules(path.resolve(path.dirname(file), json.include), depth + 1));
 	}
+
 	if (Array.isArray(json.tokenColors)) {
 		for (const entry of json.tokenColors) {
 			const rule = toTokenRule(entry);
@@ -264,7 +267,6 @@ async function readThemeRules(file: string, depth = 0): Promise<TokenRule[]> {
 	}
 	return rules;
 }
-
 function activeThemeLabel(): string | undefined {
 	const workbench = vscode.workspace.getConfiguration('workbench');
 	if (workbench.get<boolean>('autoDetectColorScheme')) {
@@ -298,6 +300,7 @@ function customizationRules(label: string | undefined): TokenRule[] {
 			if (key.startsWith('[') && key.includes(`[${label}]`) && value && typeof value === 'object') {
 				layers.push(value as Json);
 			}
+
 		}
 	}
 	const simple: Record<string, string> = {
@@ -374,6 +377,25 @@ async function resolveTokenPalette(): Promise<Record<string, PaletteEntry> | und
 	return palette;
 }
 
+function customTokenPalette(): CustomTokenPalette {
+	const configured = vscode.workspace.getConfiguration('pyact').get<Json>('editorTheme') ?? {};
+	const palette: CustomTokenPalette = {};
+	for (const [token, value] of Object.entries(configured)) {
+		if (typeof value === 'string') {
+			palette[token] = { foreground: value };
+		} else if (value && typeof value === 'object') {
+			const entry = value as Json;
+			if (typeof entry.foreground === 'string' || typeof entry.fontStyle === 'string') {
+				palette[token] = {
+					foreground: typeof entry.foreground === 'string' ? entry.foreground : undefined,
+					fontStyle: typeof entry.fontStyle === 'string' ? entry.fontStyle : undefined
+				};
+			}
+		}
+	}
+	return palette;
+}
+
 export class PamdCustomEditorProvider implements vscode.CustomTextEditorProvider {
 	constructor(private readonly extensionPath: string) {}
 
@@ -398,9 +420,19 @@ export class PamdCustomEditorProvider implements vscode.CustomTextEditorProvider
 			}
 		};
 		let ignoreNextDocumentChange = false;
+		let themeRequest = 0;
 		const sendTheme = async () => {
+			const request = ++themeRequest;
 			try {
-				await webviewPanel.webview.postMessage({ type: 'tokenColors', palette: await resolveTokenPalette() });
+				const palette = await resolveTokenPalette();
+				if (request !== themeRequest || webviewPanel.visible === false) {return;}
+				if (palette) {
+					await webviewPanel.webview.postMessage({
+						type: 'tokenColors',
+						palette,
+						customPalette: customTokenPalette()
+					});
+				}
 			} catch {
 				// panel was disposed while the theme was being resolved
 			}
@@ -408,7 +440,9 @@ export class PamdCustomEditorProvider implements vscode.CustomTextEditorProvider
 		const themeSubscriptions = [
 			vscode.window.onDidChangeActiveColorTheme(() => void sendTheme()),
 			vscode.workspace.onDidChangeConfiguration(event => {
-				if (event.affectsConfiguration('workbench') || event.affectsConfiguration('editor.tokenColorCustomizations')) {
+				if (event.affectsConfiguration('workbench')
+					|| event.affectsConfiguration('editor.tokenColorCustomizations')
+					|| event.affectsConfiguration('pyact.editorTheme')) {
 					void sendTheme();
 				}
 			})
@@ -573,6 +607,7 @@ async function clearCache(uri?: vscode.Uri): Promise<void> {
 
 async function showPyActActions(uri?: vscode.Uri): Promise<void> {
 	const action = await vscode.window.showQuickPick([
+		{ label: '$(symbol-color)  Configure Editor Theme', command: 'pamd.configureEditorTheme' },
 		{ label: '$(markdown)  Compile Markdown', command: 'pamd.compileMarkdown' },
 		{ label: '$(sync)  Compile Markdown (No Cache)', command: 'pamd.compileNoCache' },
 		{ label: '$(export)  Export to Word (.docx)', command: 'pamd.generateDocx' },
@@ -580,6 +615,10 @@ async function showPyActActions(uri?: vscode.Uri): Promise<void> {
 		{ label: '$(clear-all)  Clear PAMD Cache', command: 'pamd.clearCache' }
 	], { placeHolder: 'Choose a PyAct action' });
 	if (action) {await vscode.commands.executeCommand(action.command, uri);}
+}
+
+async function configureEditorTheme(): Promise<void> {
+	await vscode.commands.executeCommand('workbench.action.openSettings', '@id:pyact.editorTheme');
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -595,7 +634,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('pamd.compileNoCache', (uri?: vscode.Uri) => runCompileCommand(uri, false, true)),
 		vscode.commands.registerCommand('pamd.generateDocx', (uri?: vscode.Uri) => runCompileCommand(uri, true)),
 		vscode.commands.registerCommand('pamd.lint', (uri?: vscode.Uri) => runLint(uri)),
-		vscode.commands.registerCommand('pamd.clearCache', (uri?: vscode.Uri) => clearCache(uri))
+		vscode.commands.registerCommand('pamd.clearCache', (uri?: vscode.Uri) => clearCache(uri)),
+		vscode.commands.registerCommand('pamd.configureEditorTheme', () => configureEditorTheme())
 	);
 }
 

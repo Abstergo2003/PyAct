@@ -13,6 +13,7 @@ Writing `.pamd` files is great, and writing them in **Visual Studio Code** shoul
 - **Export to Word (DOCX)**: Click the Word icon in the top right of the editor to instantly convert your file into a native Microsoft Word Document.
 - **Project Commands**: Compile Markdown, force a no-cache build, lint the project, or clear `.pamd-cache` directly from the editor.
 - **Diagnostics**: Compilation and lint failures are published in VS Code's Problems panel.
+- **Custom Theme**: Use `PyAct: Configure PAMD Editor Theme` to override individual Monaco token colors.
 - **Monaco Syntax Highlighting**: Python and Markdown cells use the embedded Monaco editor for full language tokenization, including strings, numbers, comments, variables, and keywords.
 - **PAMD Markdown Highlighting**: Markdown headings, lists, quotes, links, emphasis, inline code, fenced code, HTML comments, and PAMD tags such as `<ctx>`, `<glb>`, `<tmp>`, and `<pagebreak/>` are highlighted inside the custom editor.
 - **Context Completions**: Inside `<ctx>` tags, suggestions are collected from keys returned by `context()`, including nested paths such as `project.author`. Suggestions appear automatically while typing; press `Ctrl+Space` to reopen them manually.
@@ -41,7 +42,8 @@ Writing `.pamd` files is great, and writing them in **Visual Studio Code** shoul
   "pyact.pythonPath": "python",
   "pyact.autoPreview": true,
   "pyact.outputDirectory": "",
-  "pyact.showToolbar": true
+  "pyact.showToolbar": true,
+  "pyact.editorTheme": {}
 }
 ```
 
@@ -52,13 +54,69 @@ Syntax highlighting is provided by the Monaco editor bundled with the
 extension, so it works without a network connection. The editor uses the
 active VS Code theme family and keeps each cell independently resizable.
 
-To customize token colors, edit `EDITOR_COLORS` near the top of
-`src/pamdEditorHtml.ts`. The `dark` and `light` sections include separate
-entries for Python, Markdown, and PAMD tokens. Set an entry to an empty string
-to use the active VS Code theme color for that token instead.
+Use **`PyAct: Configure PAMD Editor Theme`** to open the setting. Add token
+names to `pyact.editorTheme`; configured values override the built-in palette
+and apply to open PAMD editors.
 
-To reuse a different VS Code theme color for a Monaco token, edit
-`THEME_TOKEN_MAP` in the same file. For example,
+All configurable tokens are:
+
+| Python / shared token | Markdown token | PAMD token |
+|---|---|---|
+| `keyword` | `markdown-heading` | `pamd-tag` |
+| `constant` | `markdown-quote` | `pamd-tag-content` |
+| `variable` | `markdown-list` | `pamd-control` |
+| `variable.language` | `markdown-code-fence` | |
+| `function` | `markdown-code` | |
+| `class-name` | `markdown-bold` | |
+| `annotation` | `markdown-italic` | |
+| `namespace` | `markdown-link` | |
+| `import-name` | `markdown-entity` | |
+| `number` | | |
+| `string` | | |
+| `string.escape` | | |
+| `operator` | | |
+| `delimiter` | | |
+| `comment` | | |
+
+Example:
+
+```json
+"pyact.editorTheme": {
+  "keyword": "#C586C0",
+  "constant": "#569CD6",
+  "variable": "#9CDCFE",
+  "variable.language": "#569CD6",
+  "function": "#DCDCAA",
+  "class-name": "#4EC9B0",
+  "annotation": "#DCDCAA",
+  "namespace": "#4EC9B0",
+  "import-name": "#9CDCFE",
+  "number": "#B5CEA8",
+  "string": "#CE9178",
+  "string.escape": "#D7BA7D",
+  "operator": "#D4D4D4",
+  "delimiter": "#D4D4D4",
+  "comment": "#6A9955",
+  "markdown-heading": "#569CD6",
+  "markdown-quote": "#6A9955",
+  "markdown-list": "#C586C0",
+  "markdown-code-fence": "#DCDCAA",
+  "markdown-code": "#CE9178",
+  "markdown-bold": "#DCDCAA",
+  "markdown-italic": "#DCDCAA",
+  "markdown-link": "#4FC1FF",
+  "markdown-entity": "#B5CEA8",
+  "pamd-tag": "#4FC1FF",
+  "pamd-tag-content": "#DCDCAA",
+  "pamd-control": "#C586C0"
+}
+```
+
+Each value can also be an object with `foreground` and `fontStyle`, for
+example `{ "foreground": "#4EC9B0", "fontStyle": "bold" }`.
+
+For development-time theme remapping, edit
+`THEME_TOKEN_MAP` in `src/pamdEditorHtml.ts`. For example,
 `'markdown-heading': 'keyword'` makes Markdown headings use the theme's keyword
 color, while `'pamd-tag': 'namespace'` makes PAMD tags use the namespace color.
 The left side is a Monaco token and the right side is the logical VS Code

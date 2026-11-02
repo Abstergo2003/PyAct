@@ -69,6 +69,7 @@ let saveTimer;
 let editors = [];
 let monacoReady = false;
 let tokenPalette = null;
+let customTokenPalette = null;
 let themeSeq = 0;
 const cells = document.getElementById('cells');
 const status = document.getElementById('status');
@@ -154,8 +155,8 @@ const EDITOR_COLORS = {
   },
   light: {
     'keyword': '#AF00DB', 'constant': '#0000FF', 'variable': '#001080', 'variable.language': '#0000FF',
-    'function': '#795E26', 'class-name': '#267F99', 'annotation': '#795E26', 'namespace': '#267F99',
-    'import-name': '#001080', 'number': '#098658', 'string': '#A31515', 'string.escape': '#EE0000',
+    'function': '#795E26', 'class-name': '#008000', 'annotation': '#795E26', 'namespace': '#267F99',
+    'import-name': '#001080', 'number': '#098658', 'string': '#C86400', 'string.escape': '#E07B00',
     'operator': '#000000', 'delimiter': '#000000', 'comment': '#008000',
     'markdown-heading': '#0000FF', 'markdown-quote': '#008000', 'markdown-list': '#AF00DB',
     'markdown-code-fence': '#795E26', 'markdown-code': '#A31515', 'markdown-bold': '#795E26',
@@ -194,6 +195,12 @@ const THEME_TOKEN_MAP = {
   'pamd-tag-content': 'string',
   'pamd-control': 'keyword'
 };
+// Keep Python symbols visually consistent with the Pylance defaults. These
+// tokens intentionally do not inherit broad TextMate theme mappings.
+const MANUAL_PYTHON_TOKEN_COLORS = new Set([
+  'variable', 'variable.language', 'function', 'class-name',
+  'annotation', 'namespace', 'import-name', 'string', 'string.escape'
+]);
 function themeBase() {
   const classes = document.body.classList;
   if (classes.contains('vscode-light') || classes.contains('vscode-high-contrast-light')) return 'vs';
@@ -227,24 +234,25 @@ function applyTheme() {
   const editorFg = cssColor('--vscode-editor-foreground', dark ? '#D4D4D4' : '#333333');
   const editorHex = normHex(editorFg);
   const rgbOf = hex => [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
-  // "Too plain" = would read as normal text. Exact equality is not enough (#D4D4D4 vs #CCCCCC).
   const tooPlain = hex => {
     if (!hex || !editorHex) return false;
     const a = rgbOf(hex), b = rgbOf(editorHex);
     return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 48;
   };
-  // Theme-aware colour VS Code defines for variable symbols; used when the theme leaves variables plain.
   let variableAlt = normHex(cssColor('--vscode-symbolIcon-variableForeground', fallback['variable']));
   if (tooPlain(variableAlt)) variableAlt = normHex(fallback['variable']);
   const plainTokens = ['operator', 'delimiter'];
   const rules = Object.keys(fallback).map(token => {
     const themeToken = THEME_TOKEN_MAP[token] || token;
     const entry = tokenPalette ? (tokenPalette[themeToken] || {}) : {};
+    const customEntry = customTokenPalette ? (customTokenPalette[token] || {}) : {};
     const isVariable = token === 'variable' || token === 'import-name';
     const isPlainToken = plainTokens.indexOf(token) >= 0;
     const manualColor = normHex(fallback[token]);
-    let color = normHex(entry.foreground) || manualColor;
-    // A highlighted token must not look like plain text: drop theme colours that are too close to it.
+    let color = customEntry.foreground
+      || (MANUAL_PYTHON_TOKEN_COLORS.has(token)
+      ? manualColor
+      : normHex(entry.foreground) || manualColor);
     if (!isPlainToken && tooPlain(color)) color = undefined;
     if (!color) {
       if (isVariable) color = variableAlt;
@@ -252,7 +260,8 @@ function applyTheme() {
       else color = manualColor;
     }
     const rule = { token, foreground: color };
-    if (typeof entry.fontStyle === 'string') rule.fontStyle = entry.fontStyle;
+    if (typeof customEntry.fontStyle === 'string') rule.fontStyle = customEntry.fontStyle;
+    else if (typeof entry.fontStyle === 'string') rule.fontStyle = entry.fontStyle;
     return rule;
   });
   const name = 'pamd-theme-' + (++themeSeq);
@@ -371,7 +380,19 @@ document.querySelectorAll('[data-action]').forEach(button => button.onclick = ()
 });
 window.addEventListener('message', event => {
   if (event.data.type === 'load') { pamd = event.data.pamd; render(); status.textContent = 'Ready'; }
-  if (event.data.type === 'tokenColors') { tokenPalette = event.data.palette || null; applyTheme(); }
+  if (event.data.type === 'tokenColors' && event.data.palette && typeof event.data.palette === 'object') {
+    const palette = event.data.palette;
+    const hasColors = Object.values(palette).some(entry =>
+      entry && (typeof entry.foreground === 'string' || typeof entry.fontStyle === 'string')
+    );
+    // Theme resolution can temporarily produce an empty palette while VS Code
+    // is switching themes. Never replace a working palette with that result.
+    if (hasColors) {
+      tokenPalette = palette;
+      customTokenPalette = event.data.customPalette || {};
+      applyTheme();
+    }
+  }
   if (event.data.type === 'error') status.textContent = event.data.message;
 });
 vscode.postMessage({ type: 'ready' });
@@ -476,6 +497,7 @@ require(['vs/editor/editor.main'], () => {
         [/^/, '', '@pop'],
         [/#.*$/, 'comment'],
         [/\\bas\\b/, 'keyword'],
+        [/[A-Z][A-Za-z0-9_]*/, 'class-name'],
         [/[A-Za-z_][\\w.]*/, 'namespace'],
         [/[,\\s]+/, 'delimiter'],
         [/./, '', '@pop']
@@ -493,6 +515,7 @@ require(['vs/editor/editor.main'], () => {
         [/#.*$/, 'comment'],
         [/\\bas\\b/, 'keyword'],
         [/\\*/, 'operator'],
+        [/[A-Z][A-Za-z0-9_]*/, 'class-name'],
         [/[A-Za-z_]\\w*/, 'import-name'],
         [/[,()\\s\\\\]+/, 'delimiter'],
         [/./, '', '@pop']

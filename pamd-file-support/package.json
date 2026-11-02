@@ -3,7 +3,7 @@
   "displayName": "PAMD file support",
   "description": "Custom editing, compilation, linting, and DOCX export for PyAct .pamd documents.",
   "icon": "file_icon.png",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Abstergo2003/PyAct.git",
@@ -83,6 +83,11 @@
         "command": "pamd.clearCache",
         "title": "Clear PAMD Cache",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "pamd.configureEditorTheme",
+        "title": "Configure PAMD Editor Theme",
+        "icon": "$(symbol-color)"
       }
     ],
     "menus": {
@@ -92,6 +97,11 @@
           "group": "navigation",
           "when": "resourceExtname == .pamd"
         },
+          {
+            "command": "pamd.configureEditorTheme",
+            "group": "navigation",
+            "when": "resourceExtname == .pamd"
+          },
         {
           "command": "pamd.compileMarkdown",
           "group": "navigation",
@@ -141,6 +151,24 @@
           "type": "boolean",
           "default": true,
           "description": "Show the PyAct toolbar inside the custom PAMD editor."
+        },
+        "pyact.editorTheme": {
+          "type": "object",
+          "default": {},
+          "description": "Override Monaco token colors in the PAMD editor. Keys include keyword, variable, import-name, function, class-name, string, number, comment, and markdown-heading.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "foreground": { "type": "string" },
+                  "fontStyle": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
         }
       }
     }
